@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+	AEGIS_256X_NONCE_SIZE,
 	Aegis256XState,
 	aegis256X2Decrypt,
+	aegis256X2DecryptDetached,
 	aegis256X2Encrypt,
+	aegis256X2EncryptDetached,
 	aegis256X2Mac,
 	aegis256X2MacVerify,
 	aegis256X4Mac,
@@ -75,7 +78,7 @@ describe("AEGIS-256X2 Init", () => {
 	});
 });
 
-describe("AEGIS-256X2 Encrypt", () => {
+describe("AEGIS-256X2 Encrypt Detached", () => {
 	test("Test Vector 1 - empty message, 128-bit tag", () => {
 		const key = hexToBytes(
 			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -86,7 +89,13 @@ describe("AEGIS-256X2 Encrypt", () => {
 		const ad = hexToBytes("");
 		const msg = hexToBytes("");
 
-		const { ciphertext, tag } = aegis256X2Encrypt(msg, ad, key, nonce, 16);
+		const { ciphertext, tag } = aegis256X2EncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			16,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe("");
 		expect(bytesToHex(tag)).toBe("62cdbab084c83dacdb945bb446f049c8");
@@ -102,7 +111,13 @@ describe("AEGIS-256X2 Encrypt", () => {
 		const ad = hexToBytes("");
 		const msg = hexToBytes("");
 
-		const { ciphertext, tag } = aegis256X2Encrypt(msg, ad, key, nonce, 32);
+		const { ciphertext, tag } = aegis256X2EncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			32,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe("");
 		expect(bytesToHex(tag)).toBe(
@@ -122,7 +137,13 @@ describe("AEGIS-256X2 Encrypt", () => {
 			"040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607",
 		);
 
-		const { ciphertext, tag } = aegis256X2Encrypt(msg, ad, key, nonce, 16);
+		const { ciphertext, tag } = aegis256X2EncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			16,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe(
 			"72120c2ea8236180d67859001f4729077b7064c414384fe3a7b52f1571f4f8a7d0f01e18db4f3bc0adb150702e5d147a8d36522132761b994c1bd395589e2ccf0790dfe2a3d12d61cd666b2859827739db4037dd3124c78424459376f6cac08e1a7223a2a43e398ce6385cd654a19f481cba3b8f25910b42",
@@ -142,7 +163,13 @@ describe("AEGIS-256X2 Encrypt", () => {
 			"040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607",
 		);
 
-		const { ciphertext, tag } = aegis256X2Encrypt(msg, ad, key, nonce, 32);
+		const { ciphertext, tag } = aegis256X2EncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			32,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe(
 			"72120c2ea8236180d67859001f4729077b7064c414384fe3a7b52f1571f4f8a7d0f01e18db4f3bc0adb150702e5d147a8d36522132761b994c1bd395589e2ccf0790dfe2a3d12d61cd666b2859827739db4037dd3124c78424459376f6cac08e1a7223a2a43e398ce6385cd654a19f481cba3b8f25910b42",
@@ -153,7 +180,7 @@ describe("AEGIS-256X2 Encrypt", () => {
 	});
 });
 
-describe("AEGIS-256X2 Decrypt", () => {
+describe("AEGIS-256X2 Decrypt Detached", () => {
 	test("Decrypt Test Vector 2", () => {
 		const key = hexToBytes(
 			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -167,7 +194,7 @@ describe("AEGIS-256X2 Decrypt", () => {
 		);
 		const tag = hexToBytes("635d391828520bf1512763f0c8f5cdbd");
 
-		const msg = aegis256X2Decrypt(ct, tag, ad, key, nonce);
+		const msg = aegis256X2DecryptDetached(ct, tag, ad, key, nonce);
 
 		expect(msg).not.toBeNull();
 		expect(bytesToHex(msg!)).toBe(
@@ -188,9 +215,70 @@ describe("AEGIS-256X2 Decrypt", () => {
 		);
 		const tag = hexToBytes("735d391828520bf1512763f0c8f5cdbd");
 
-		const msg = aegis256X2Decrypt(ct, tag, ad, key, nonce);
+		const msg = aegis256X2DecryptDetached(ct, tag, ad, key, nonce);
 
 		expect(msg).toBeNull();
+	});
+});
+
+describe("AEGIS-256X2 Encrypt/Decrypt (combined)", () => {
+	test("Roundtrip with 128-bit tag", () => {
+		const key = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+		const nonce = hexToBytes(
+			"101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+		);
+		const ad = hexToBytes("0102030401020304");
+		const msg = hexToBytes(
+			"040506070405060704050607040506070405060704050607040506070405060704050607040506070405060704050607",
+		);
+
+		const sealed = aegis256X2Encrypt(msg, ad, key, nonce, 16);
+
+		expect(sealed.length).toBe(AEGIS_256X_NONCE_SIZE + msg.length + 16);
+
+		const decrypted = aegis256X2Decrypt(sealed, ad, key, 16);
+
+		expect(decrypted).not.toBeNull();
+		expect(bytesToHex(decrypted!)).toBe(bytesToHex(msg));
+	});
+
+	test("Roundtrip with 256-bit tag", () => {
+		const key = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+		const nonce = hexToBytes(
+			"101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+		);
+		const ad = hexToBytes("");
+		const msg = hexToBytes("");
+
+		const sealed = aegis256X2Encrypt(msg, ad, key, nonce, 32);
+
+		expect(sealed.length).toBe(AEGIS_256X_NONCE_SIZE + 32);
+
+		const decrypted = aegis256X2Decrypt(sealed, ad, key, 32);
+
+		expect(decrypted).not.toBeNull();
+		expect(bytesToHex(decrypted!)).toBe("");
+	});
+
+	test("Decrypt returns null for tampered ciphertext", () => {
+		const key = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+		const nonce = hexToBytes(
+			"101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+		);
+		const ad = hexToBytes("");
+		const msg = hexToBytes("00000000000000000000000000000000");
+
+		const sealed = aegis256X2Encrypt(msg, ad, key, nonce, 16);
+		sealed[AEGIS_256X_NONCE_SIZE] ^= 1;
+
+		const decrypted = aegis256X2Decrypt(sealed, ad, key, 16);
+		expect(decrypted).toBeNull();
 	});
 });
 

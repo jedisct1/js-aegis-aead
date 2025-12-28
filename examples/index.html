@@ -49,8 +49,8 @@
       const key = crypto.getRandomValues(new Uint8Array(16));
       const nonce = crypto.getRandomValues(new Uint8Array(16));
 
-      const { ciphertext, tag } = AEGIS.aegis128LEncrypt(msg, new Uint8Array(), key, nonce);
-      const decrypted = AEGIS.aegis128LDecrypt(ciphertext, tag, new Uint8Array(), key, nonce);
+      const { ciphertext, tag } = AEGIS.aegis128LEncryptDetached(msg, new Uint8Array(), key, nonce);
+      const decrypted = AEGIS.aegis128LDecryptDetached(ciphertext, tag, new Uint8Array(), key, nonce);
 
       document.getElementById('output').textContent =
         `Key:        ${hex(key)}

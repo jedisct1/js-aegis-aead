@@ -3,6 +3,7 @@ import {
 	andBlocksTo,
 	C0,
 	C1,
+	concatBytes,
 	constantTimeEqual,
 	le64To,
 	xorBlocksTo,
@@ -244,15 +245,15 @@ export class Aegis256State {
 }
 
 /**
- * Encrypts a message using AEGIS-256.
+ * Encrypts a message using AEGIS-256 (detached mode).
  * @param msg - Plaintext message
  * @param ad - Associated data (authenticated but not encrypted)
  * @param key - 32-byte encryption key
  * @param nonce - 32-byte nonce (must be unique per message with the same key)
  * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
- * @returns Object containing ciphertext and authentication tag
+ * @returns Object containing ciphertext and authentication tag separately
  */
-export function aegis256Encrypt(
+export function aegis256EncryptDetached(
 	msg: Uint8Array,
 	ad: Uint8Array,
 	key: Uint8Array,
@@ -284,7 +285,7 @@ export function aegis256Encrypt(
 }
 
 /**
- * Decrypts a message using AEGIS-256.
+ * Decrypts a message using AEGIS-256 (detached mode).
  * @param ct - Ciphertext
  * @param tag - Authentication tag (16 or 32 bytes)
  * @param ad - Associated data (must match what was used during encryption)
@@ -292,7 +293,7 @@ export function aegis256Encrypt(
  * @param nonce - 32-byte nonce (must match what was used during encryption)
  * @returns Decrypted plaintext, or null if authentication fails
  */
-export function aegis256Decrypt(
+export function aegis256DecryptDetached(
 	ct: Uint8Array,
 	tag: Uint8Array,
 	ad: Uint8Array,
@@ -332,6 +333,64 @@ export function aegis256Decrypt(
 	}
 
 	return msg;
+}
+
+/** Nonce size for AEGIS-256 in bytes. */
+export const AEGIS_256_NONCE_SIZE = 32;
+
+/** Key size for AEGIS-256 in bytes. */
+export const AEGIS_256_KEY_SIZE = 32;
+
+/**
+ * Encrypts a message using AEGIS-256.
+ * Returns a single buffer containing nonce || ciphertext || tag.
+ * @param msg - Plaintext message
+ * @param ad - Associated data (authenticated but not encrypted)
+ * @param key - 32-byte encryption key
+ * @param nonce - 32-byte nonce (must be unique per message with the same key)
+ * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
+ * @returns Concatenated nonce || ciphertext || tag
+ */
+export function aegis256Encrypt(
+	msg: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+	tagLen: 16 | 32 = 16,
+): Uint8Array {
+	const { ciphertext, tag } = aegis256EncryptDetached(
+		msg,
+		ad,
+		key,
+		nonce,
+		tagLen,
+	);
+	return concatBytes(nonce, ciphertext, tag);
+}
+
+/**
+ * Decrypts a message using AEGIS-256.
+ * Expects input as nonce || ciphertext || tag.
+ * @param sealed - Concatenated nonce || ciphertext || tag
+ * @param ad - Associated data (must match what was used during encryption)
+ * @param key - 32-byte encryption key
+ * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
+ * @returns Decrypted plaintext, or null if authentication fails
+ */
+export function aegis256Decrypt(
+	sealed: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	tagLen: 16 | 32 = 16,
+): Uint8Array | null {
+	const nonceSize = AEGIS_256_NONCE_SIZE;
+	if (sealed.length < nonceSize + tagLen) {
+		return null;
+	}
+	const nonce = sealed.subarray(0, nonceSize);
+	const ct = sealed.subarray(nonceSize, sealed.length - tagLen);
+	const tag = sealed.subarray(sealed.length - tagLen);
+	return aegis256DecryptDetached(ct, tag, ad, key, nonce);
 }
 
 /**

@@ -359,16 +359,16 @@ export class Aegis256XState {
 }
 
 /**
- * Encrypts a message using AEGIS-256X.
+ * Encrypts a message using AEGIS-256X (detached mode).
  * @param msg - Plaintext message
  * @param ad - Associated data (authenticated but not encrypted)
  * @param key - 32-byte encryption key
  * @param nonce - 32-byte nonce (must be unique per message with the same key)
  * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
  * @param degree - Parallelism degree (default: 2)
- * @returns Object containing ciphertext and authentication tag
+ * @returns Object containing ciphertext and authentication tag separately
  */
-export function aegis256XEncrypt(
+export function aegis256XEncryptDetached(
 	msg: Uint8Array,
 	ad: Uint8Array,
 	key: Uint8Array,
@@ -406,7 +406,7 @@ export function aegis256XEncrypt(
 }
 
 /**
- * Decrypts a message using AEGIS-256X.
+ * Decrypts a message using AEGIS-256X (detached mode).
  * @param ct - Ciphertext
  * @param tag - Authentication tag (16 or 32 bytes)
  * @param ad - Associated data (must match what was used during encryption)
@@ -415,7 +415,7 @@ export function aegis256XEncrypt(
  * @param degree - Parallelism degree (default: 2)
  * @returns Decrypted plaintext, or null if authentication fails
  */
-export function aegis256XDecrypt(
+export function aegis256XDecryptDetached(
 	ct: Uint8Array,
 	tag: Uint8Array,
 	ad: Uint8Array,
@@ -460,6 +460,105 @@ export function aegis256XDecrypt(
 	return msg;
 }
 
+/** Nonce size for AEGIS-256X in bytes. */
+export const AEGIS_256X_NONCE_SIZE = 32;
+
+/** Key size for AEGIS-256X in bytes. */
+export const AEGIS_256X_KEY_SIZE = 32;
+
+/**
+ * Encrypts a message using AEGIS-256X.
+ * Returns a single buffer containing nonce || ciphertext || tag.
+ * @param msg - Plaintext message
+ * @param ad - Associated data (authenticated but not encrypted)
+ * @param key - 32-byte encryption key
+ * @param nonce - 32-byte nonce (must be unique per message with the same key)
+ * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
+ * @param degree - Parallelism degree (default: 2)
+ * @returns Concatenated nonce || ciphertext || tag
+ */
+export function aegis256XEncrypt(
+	msg: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+	tagLen: 16 | 32 = 16,
+	degree: number = 2,
+): Uint8Array {
+	const { ciphertext, tag } = aegis256XEncryptDetached(
+		msg,
+		ad,
+		key,
+		nonce,
+		tagLen,
+		degree,
+	);
+	return concatBytes(nonce, ciphertext, tag);
+}
+
+/**
+ * Decrypts a message using AEGIS-256X.
+ * Expects input as nonce || ciphertext || tag.
+ * @param sealed - Concatenated nonce || ciphertext || tag
+ * @param ad - Associated data (must match what was used during encryption)
+ * @param key - 32-byte encryption key
+ * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
+ * @param degree - Parallelism degree (default: 2)
+ * @returns Decrypted plaintext, or null if authentication fails
+ */
+export function aegis256XDecrypt(
+	sealed: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	tagLen: 16 | 32 = 16,
+	degree: number = 2,
+): Uint8Array | null {
+	const nonceSize = AEGIS_256X_NONCE_SIZE;
+	if (sealed.length < nonceSize + tagLen) {
+		return null;
+	}
+	const nonce = sealed.subarray(0, nonceSize);
+	const ct = sealed.subarray(nonceSize, sealed.length - tagLen);
+	const tag = sealed.subarray(sealed.length - tagLen);
+	return aegis256XDecryptDetached(ct, tag, ad, key, nonce, degree);
+}
+
+/** AEGIS-256X2 encryption - detached mode (degree=2). */
+export const aegis256X2EncryptDetached = (
+	msg: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+	tagLen: 16 | 32 = 16,
+) => aegis256XEncryptDetached(msg, ad, key, nonce, tagLen, 2);
+
+/** AEGIS-256X2 decryption - detached mode (degree=2). */
+export const aegis256X2DecryptDetached = (
+	ct: Uint8Array,
+	tag: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+) => aegis256XDecryptDetached(ct, tag, ad, key, nonce, 2);
+
+/** AEGIS-256X4 encryption - detached mode (degree=4). */
+export const aegis256X4EncryptDetached = (
+	msg: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+	tagLen: 16 | 32 = 16,
+) => aegis256XEncryptDetached(msg, ad, key, nonce, tagLen, 4);
+
+/** AEGIS-256X4 decryption - detached mode (degree=4). */
+export const aegis256X4DecryptDetached = (
+	ct: Uint8Array,
+	tag: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+) => aegis256XDecryptDetached(ct, tag, ad, key, nonce, 4);
+
 /** AEGIS-256X2 encryption (degree=2). */
 export const aegis256X2Encrypt = (
 	msg: Uint8Array,
@@ -471,12 +570,11 @@ export const aegis256X2Encrypt = (
 
 /** AEGIS-256X2 decryption (degree=2). */
 export const aegis256X2Decrypt = (
-	ct: Uint8Array,
-	tag: Uint8Array,
+	sealed: Uint8Array,
 	ad: Uint8Array,
 	key: Uint8Array,
-	nonce: Uint8Array,
-) => aegis256XDecrypt(ct, tag, ad, key, nonce, 2);
+	tagLen: 16 | 32 = 16,
+) => aegis256XDecrypt(sealed, ad, key, tagLen, 2);
 
 /** AEGIS-256X4 encryption (degree=4). */
 export const aegis256X4Encrypt = (
@@ -489,12 +587,11 @@ export const aegis256X4Encrypt = (
 
 /** AEGIS-256X4 decryption (degree=4). */
 export const aegis256X4Decrypt = (
-	ct: Uint8Array,
-	tag: Uint8Array,
+	sealed: Uint8Array,
 	ad: Uint8Array,
 	key: Uint8Array,
-	nonce: Uint8Array,
-) => aegis256XDecrypt(ct, tag, ad, key, nonce, 4);
+	tagLen: 16 | 32 = 16,
+) => aegis256XDecrypt(sealed, ad, key, tagLen, 4);
 
 /**
  * Computes a MAC (Message Authentication Code) using AEGIS-256X.

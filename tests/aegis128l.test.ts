@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+	AEGIS_128L_NONCE_SIZE,
 	Aegis128LState,
 	aegis128LDecrypt,
+	aegis128LDecryptDetached,
 	aegis128LEncrypt,
+	aegis128LEncryptDetached,
 	aegis128LMac,
 	aegis128LMacVerify,
 } from "../src/aegis128l.ts";
@@ -67,14 +70,20 @@ describe("AEGIS-128L Update", () => {
 	});
 });
 
-describe("AEGIS-128L Encrypt", () => {
+describe("AEGIS-128L Encrypt Detached", () => {
 	test("Test Vector 1 - 128-bit tag", () => {
 		const key = hexToBytes("10010000000000000000000000000000");
 		const nonce = hexToBytes("10000200000000000000000000000000");
 		const ad = hexToBytes("");
 		const msg = hexToBytes("00000000000000000000000000000000");
 
-		const { ciphertext, tag } = aegis128LEncrypt(msg, ad, key, nonce, 16);
+		const { ciphertext, tag } = aegis128LEncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			16,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe("c1c0e58bd913006feba00f4b3cc3594e");
 		expect(bytesToHex(tag)).toBe("abe0ece80c24868a226a35d16bdae37a");
@@ -86,7 +95,13 @@ describe("AEGIS-128L Encrypt", () => {
 		const ad = hexToBytes("");
 		const msg = hexToBytes("00000000000000000000000000000000");
 
-		const { ciphertext, tag } = aegis128LEncrypt(msg, ad, key, nonce, 32);
+		const { ciphertext, tag } = aegis128LEncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			32,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe("c1c0e58bd913006feba00f4b3cc3594e");
 		expect(bytesToHex(tag)).toBe(
@@ -100,7 +115,13 @@ describe("AEGIS-128L Encrypt", () => {
 		const ad = hexToBytes("");
 		const msg = hexToBytes("");
 
-		const { ciphertext, tag } = aegis128LEncrypt(msg, ad, key, nonce, 16);
+		const { ciphertext, tag } = aegis128LEncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			16,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe("");
 		expect(bytesToHex(tag)).toBe("c2b879a67def9d74e6c14f708bbcc9b4");
@@ -114,7 +135,13 @@ describe("AEGIS-128L Encrypt", () => {
 			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
 		);
 
-		const { ciphertext, tag } = aegis128LEncrypt(msg, ad, key, nonce, 16);
+		const { ciphertext, tag } = aegis128LEncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			16,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe(
 			"79d94593d8c2119d7e8fd9b8fc77845c5c077a05b2528b6ac54b563aed8efe84",
@@ -128,7 +155,13 @@ describe("AEGIS-128L Encrypt", () => {
 		const ad = hexToBytes("0001020304050607");
 		const msg = hexToBytes("000102030405060708090a0b0c0d");
 
-		const { ciphertext, tag } = aegis128LEncrypt(msg, ad, key, nonce, 16);
+		const { ciphertext, tag } = aegis128LEncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			16,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe("79d94593d8c2119d7e8fd9b8fc77");
 		expect(bytesToHex(tag)).toBe("5c04b3dba849b2701effbe32c7f0fab7");
@@ -144,7 +177,13 @@ describe("AEGIS-128L Encrypt", () => {
 			"101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031323334353637",
 		);
 
-		const { ciphertext, tag } = aegis128LEncrypt(msg, ad, key, nonce, 16);
+		const { ciphertext, tag } = aegis128LEncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			16,
+		);
 
 		expect(bytesToHex(ciphertext)).toBe(
 			"b31052ad1cca4e291abcf2df3502e6bdb1bfd6db36798be3607b1f94d34478aa7ede7f7a990fec10",
@@ -153,7 +192,7 @@ describe("AEGIS-128L Encrypt", () => {
 	});
 });
 
-describe("AEGIS-128L Decrypt", () => {
+describe("AEGIS-128L Decrypt Detached", () => {
 	test("Decrypt Test Vector 3", () => {
 		const key = hexToBytes("10010000000000000000000000000000");
 		const nonce = hexToBytes("10000200000000000000000000000000");
@@ -163,7 +202,7 @@ describe("AEGIS-128L Decrypt", () => {
 		);
 		const tag = hexToBytes("cc6f3372f6aa1bb82388d695c3962d9a");
 
-		const msg = aegis128LDecrypt(ct, tag, ad, key, nonce);
+		const msg = aegis128LDecryptDetached(ct, tag, ad, key, nonce);
 
 		expect(msg).not.toBeNull();
 		expect(bytesToHex(msg!)).toBe(
@@ -178,7 +217,7 @@ describe("AEGIS-128L Decrypt", () => {
 		const ct = hexToBytes("79d94593d8c2119d7e8fd9b8fc77");
 		const tag = hexToBytes("5c04b3dba849b2701effbe32c7f0fab7");
 
-		const msg = aegis128LDecrypt(ct, tag, ad, key, nonce);
+		const msg = aegis128LDecryptDetached(ct, tag, ad, key, nonce);
 
 		expect(msg).not.toBeNull();
 		expect(bytesToHex(msg!)).toBe("000102030405060708090a0b0c0d");
@@ -191,7 +230,7 @@ describe("AEGIS-128L Decrypt", () => {
 		const ct = hexToBytes("79d94593d8c2119d7e8fd9b8fc77");
 		const tag = hexToBytes("5c04b3dba849b2701effbe32c7f0fab7");
 
-		const msg = aegis128LDecrypt(ct, tag, ad, key, nonce);
+		const msg = aegis128LDecryptDetached(ct, tag, ad, key, nonce);
 
 		expect(msg).toBeNull();
 	});
@@ -203,7 +242,7 @@ describe("AEGIS-128L Decrypt", () => {
 		const ct = hexToBytes("79d94593d8c2119d7e8fd9b8fc78");
 		const tag = hexToBytes("5c04b3dba849b2701effbe32c7f0fab7");
 
-		const msg = aegis128LDecrypt(ct, tag, ad, key, nonce);
+		const msg = aegis128LDecryptDetached(ct, tag, ad, key, nonce);
 
 		expect(msg).toBeNull();
 	});
@@ -215,7 +254,7 @@ describe("AEGIS-128L Decrypt", () => {
 		const ct = hexToBytes("79d94593d8c2119d7e8fd9b8fc77");
 		const tag = hexToBytes("5c04b3dba849b2701effbe32c7f0fab7");
 
-		const msg = aegis128LDecrypt(ct, tag, ad, key, nonce);
+		const msg = aegis128LDecryptDetached(ct, tag, ad, key, nonce);
 
 		expect(msg).toBeNull();
 	});
@@ -227,9 +266,82 @@ describe("AEGIS-128L Decrypt", () => {
 		const ct = hexToBytes("79d94593d8c2119d7e8fd9b8fc77");
 		const tag = hexToBytes("6c04b3dba849b2701effbe32c7f0fab8");
 
-		const msg = aegis128LDecrypt(ct, tag, ad, key, nonce);
+		const msg = aegis128LDecryptDetached(ct, tag, ad, key, nonce);
 
 		expect(msg).toBeNull();
+	});
+});
+
+describe("AEGIS-128L Encrypt/Decrypt (combined)", () => {
+	test("Roundtrip with 128-bit tag", () => {
+		const key = hexToBytes("10010000000000000000000000000000");
+		const nonce = hexToBytes("10000200000000000000000000000000");
+		const ad = hexToBytes("0001020304050607");
+		const msg = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+
+		const sealed = aegis128LEncrypt(msg, ad, key, nonce, 16);
+
+		expect(sealed.length).toBe(AEGIS_128L_NONCE_SIZE + msg.length + 16);
+
+		const decrypted = aegis128LDecrypt(sealed, ad, key, 16);
+
+		expect(decrypted).not.toBeNull();
+		expect(bytesToHex(decrypted!)).toBe(bytesToHex(msg));
+	});
+
+	test("Roundtrip with 256-bit tag", () => {
+		const key = hexToBytes("10010000000000000000000000000000");
+		const nonce = hexToBytes("10000200000000000000000000000000");
+		const ad = hexToBytes("");
+		const msg = hexToBytes("00000000000000000000000000000000");
+
+		const sealed = aegis128LEncrypt(msg, ad, key, nonce, 32);
+
+		expect(sealed.length).toBe(AEGIS_128L_NONCE_SIZE + msg.length + 32);
+
+		const decrypted = aegis128LDecrypt(sealed, ad, key, 32);
+
+		expect(decrypted).not.toBeNull();
+		expect(bytesToHex(decrypted!)).toBe(bytesToHex(msg));
+	});
+
+	test("Roundtrip with empty message", () => {
+		const key = hexToBytes("10010000000000000000000000000000");
+		const nonce = hexToBytes("10000200000000000000000000000000");
+		const ad = hexToBytes("");
+		const msg = hexToBytes("");
+
+		const sealed = aegis128LEncrypt(msg, ad, key, nonce, 16);
+
+		expect(sealed.length).toBe(AEGIS_128L_NONCE_SIZE + 16);
+
+		const decrypted = aegis128LDecrypt(sealed, ad, key, 16);
+
+		expect(decrypted).not.toBeNull();
+		expect(bytesToHex(decrypted!)).toBe("");
+	});
+
+	test("Decrypt returns null for too-short input", () => {
+		const key = hexToBytes("10010000000000000000000000000000");
+		const ad = hexToBytes("");
+
+		const decrypted = aegis128LDecrypt(new Uint8Array(15), ad, key, 16);
+		expect(decrypted).toBeNull();
+	});
+
+	test("Decrypt returns null for tampered ciphertext", () => {
+		const key = hexToBytes("10010000000000000000000000000000");
+		const nonce = hexToBytes("10000200000000000000000000000000");
+		const ad = hexToBytes("");
+		const msg = hexToBytes("00000000000000000000000000000000");
+
+		const sealed = aegis128LEncrypt(msg, ad, key, nonce, 16);
+		sealed[AEGIS_128L_NONCE_SIZE] ^= 1;
+
+		const decrypted = aegis128LDecrypt(sealed, ad, key, 16);
+		expect(decrypted).toBeNull();
 	});
 });
 
