@@ -3,7 +3,6 @@ import {
 	andBlocksTo,
 	C0,
 	C1,
-	concatBytes,
 	constantTimeEqual,
 	le64To,
 	xorBlocksTo,
@@ -359,14 +358,43 @@ export function aegis256Encrypt(
 	nonce: Uint8Array,
 	tagLen: 16 | 32 = 16,
 ): Uint8Array {
-	const { ciphertext, tag } = aegis256EncryptDetached(
-		msg,
-		ad,
-		key,
-		nonce,
+	const state = new Aegis256State();
+	state.init(key, nonce);
+
+	const adPadded = zeroPad(ad, 16);
+	for (let i = 0; i + 16 <= adPadded.length; i += 16) {
+		state.absorb(adPadded.subarray(i, i + 16));
+	}
+
+	const nonceSize = AEGIS_256_NONCE_SIZE;
+	const result = new Uint8Array(nonceSize + msg.length + tagLen);
+	result.set(nonce, 0);
+
+	const fullBlocks = Math.floor(msg.length / 16) * 16;
+	for (let i = 0; i < fullBlocks; i += 16) {
+		state.encTo(
+			msg.subarray(i, i + 16),
+			result.subarray(nonceSize + i, nonceSize + i + 16),
+		);
+	}
+
+	if (msg.length > fullBlocks) {
+		const lastBlock = zeroPad(msg.subarray(fullBlocks), 16);
+		const encBlock = state.enc(lastBlock);
+		result.set(
+			encBlock.subarray(0, msg.length - fullBlocks),
+			nonceSize + fullBlocks,
+		);
+	}
+
+	const tag = state.finalize(
+		BigInt(ad.length * 8),
+		BigInt(msg.length * 8),
 		tagLen,
 	);
-	return concatBytes(nonce, ciphertext, tag);
+	result.set(tag, nonceSize + msg.length);
+
+	return result;
 }
 
 /**

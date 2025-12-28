@@ -32,7 +32,7 @@ const nonce = aegis128LCreateNonce(); // 16 random bytes
 const message = new TextEncoder().encode("Hello, world!");
 const associatedData = new TextEncoder().encode("metadata");
 
-// Encrypt - returns nonce || ciphertext || tag
+// Encrypt - returns ciphertext || tag || nonce
 const sealed = aegis128LEncrypt(message, associatedData, key, nonce);
 
 // Decrypt (returns null if authentication fails)
@@ -108,7 +108,7 @@ All algorithms support two tag lengths:
 aegis128LCreateKey(): Uint8Array   // 16 random bytes
 aegis128LCreateNonce(): Uint8Array // 16 random bytes
 
-// Combined (nonce || ciphertext || tag)
+// Combined (ciphertext || tag || nonce)
 aegis128LEncrypt(msg, ad, key, nonce, tagLen?): Uint8Array
 aegis128LDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
 
@@ -132,7 +132,7 @@ AEGIS_128L_NONCE_SIZE // 16
 aegis256CreateKey(): Uint8Array   // 32 random bytes
 aegis256CreateNonce(): Uint8Array // 32 random bytes
 
-// Combined (nonce || ciphertext || tag)
+// Combined (ciphertext || tag || nonce)
 aegis256Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
 aegis256Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
 
@@ -162,7 +162,7 @@ aegis128X2CreateNonce(): Uint8Array
 aegis128X4CreateKey(): Uint8Array  // alias
 aegis128X4CreateNonce(): Uint8Array
 
-// Combined (nonce || ciphertext || tag)
+// Combined (ciphertext || tag || nonce)
 aegis128X2Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
 aegis128X2Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
 aegis128X4Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
@@ -204,7 +204,7 @@ aegis256X2CreateNonce(): Uint8Array
 aegis256X4CreateKey(): Uint8Array  // alias
 aegis256X4CreateNonce(): Uint8Array
 
-// Combined (nonce || ciphertext || tag)
+// Combined (ciphertext || tag || nonce)
 aegis256X2Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
 aegis256X2Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
 aegis256X4Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
