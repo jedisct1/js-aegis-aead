@@ -1,4 +1,5 @@
 {
+  "exclude": ["examples"],
   "compilerOptions": {
     // Environment setup & latest features
     "lib": [
