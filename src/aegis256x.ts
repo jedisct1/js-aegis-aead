@@ -10,6 +10,7 @@ import {
 	xorBlocksTo,
 	zeroPad,
 } from "./aes.js";
+import { randomBytes } from "./random.js";
 
 /**
  * AEGIS-256X cipher state with configurable parallelism degree.
@@ -674,3 +675,33 @@ export const aegis256X4MacVerify = (
 	key: Uint8Array,
 	nonce: Uint8Array | null = null,
 ) => aegis256XMacVerify(data, tag, key, nonce, 4);
+
+/**
+ * Generates a random 32-byte key for AEGIS-256X.
+ * @returns 32-byte encryption key
+ * @throws Error if no cryptographic random source is available
+ */
+export function aegis256XCreateKey(): Uint8Array {
+	return randomBytes(AEGIS_256X_KEY_SIZE);
+}
+
+/**
+ * Generates a random 32-byte nonce for AEGIS-256X.
+ * @returns 32-byte nonce
+ * @throws Error if no cryptographic random source is available
+ */
+export function aegis256XCreateNonce(): Uint8Array {
+	return randomBytes(AEGIS_256X_NONCE_SIZE);
+}
+
+/** AEGIS-256X2 key generation (degree=2). */
+export const aegis256X2CreateKey = aegis256XCreateKey;
+
+/** AEGIS-256X2 nonce generation (degree=2). */
+export const aegis256X2CreateNonce = aegis256XCreateNonce;
+
+/** AEGIS-256X4 key generation (degree=4). */
+export const aegis256X4CreateKey = aegis256XCreateKey;
+
+/** AEGIS-256X4 nonce generation (degree=4). */
+export const aegis256X4CreateNonce = aegis256XCreateNonce;

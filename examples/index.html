@@ -46,8 +46,8 @@
 
     document.getElementById('run').onclick = () => {
       const msg = new TextEncoder().encode(document.getElementById('message').value);
-      const key = crypto.getRandomValues(new Uint8Array(16));
-      const nonce = crypto.getRandomValues(new Uint8Array(16));
+      const key = AEGIS.aegis128LCreateKey();
+      const nonce = AEGIS.aegis128LCreateNonce();
 
       const { ciphertext, tag } = AEGIS.aegis128LEncryptDetached(msg, new Uint8Array(), key, nonce);
       const decrypted = AEGIS.aegis128LDecryptDetached(ciphertext, tag, new Uint8Array(), key, nonce);

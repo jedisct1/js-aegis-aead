@@ -9,6 +9,7 @@ import {
 	xorBlocksTo,
 	zeroPad,
 } from "./aes.js";
+import { randomBytes } from "./random.js";
 
 /**
  * AEGIS-256 cipher state.
@@ -435,4 +436,22 @@ export function aegis256MacVerify(
 	const tagLen = tag.length as 16 | 32;
 	const expectedTag = aegis256Mac(data, key, nonce, tagLen);
 	return constantTimeEqual(tag, expectedTag);
+}
+
+/**
+ * Generates a random 32-byte key for AEGIS-256.
+ * @returns 32-byte encryption key
+ * @throws Error if no cryptographic random source is available
+ */
+export function aegis256CreateKey(): Uint8Array {
+	return randomBytes(AEGIS_256_KEY_SIZE);
+}
+
+/**
+ * Generates a random 32-byte nonce for AEGIS-256.
+ * @returns 32-byte nonce
+ * @throws Error if no cryptographic random source is available
+ */
+export function aegis256CreateNonce(): Uint8Array {
+	return randomBytes(AEGIS_256_NONCE_SIZE);
 }

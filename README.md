@@ -20,10 +20,15 @@ npm install aegis-aead
 ### Encryption and Decryption
 
 ```typescript
-import { aegis128LEncrypt, aegis128LDecrypt } from "aegis-aead";
+import {
+  aegis128LCreateKey,
+  aegis128LCreateNonce,
+  aegis128LEncrypt,
+  aegis128LDecrypt
+} from "aegis-aead";
 
-const key = crypto.getRandomValues(new Uint8Array(16));
-const nonce = crypto.getRandomValues(new Uint8Array(16));
+const key = aegis128LCreateKey();     // 16 random bytes
+const nonce = aegis128LCreateNonce(); // 16 random bytes
 const message = new TextEncoder().encode("Hello, world!");
 const associatedData = new TextEncoder().encode("metadata");
 
@@ -39,10 +44,15 @@ const decrypted = aegis128LDecrypt(sealed, associatedData, key);
 For applications that need separate access to the ciphertext and tag:
 
 ```typescript
-import { aegis128LEncryptDetached, aegis128LDecryptDetached } from "aegis-aead";
+import {
+  aegis128LCreateKey,
+  aegis128LCreateNonce,
+  aegis128LEncryptDetached,
+  aegis128LDecryptDetached
+} from "aegis-aead";
 
-const key = crypto.getRandomValues(new Uint8Array(16));
-const nonce = crypto.getRandomValues(new Uint8Array(16));
+const key = aegis128LCreateKey();
+const nonce = aegis128LCreateNonce();
 const message = new TextEncoder().encode("Hello, world!");
 const associatedData = new TextEncoder().encode("metadata");
 
@@ -56,10 +66,15 @@ const decrypted = aegis128LDecryptDetached(ciphertext, tag, associatedData, key,
 ### MAC (Message Authentication Code)
 
 ```typescript
-import { aegis128LMac, aegis128LMacVerify } from "aegis-aead";
+import {
+  aegis128LCreateKey,
+  aegis128LCreateNonce,
+  aegis128LMac,
+  aegis128LMacVerify
+} from "aegis-aead";
 
-const key = crypto.getRandomValues(new Uint8Array(16));
-const nonce = crypto.getRandomValues(new Uint8Array(16));
+const key = aegis128LCreateKey();
+const nonce = aegis128LCreateNonce();
 const data = new TextEncoder().encode("data to authenticate");
 
 // Generate MAC
@@ -89,6 +104,10 @@ All algorithms support two tag lengths:
 ### AEGIS-128L
 
 ```typescript
+// Key/Nonce generation
+aegis128LCreateKey(): Uint8Array   // 16 random bytes
+aegis128LCreateNonce(): Uint8Array // 16 random bytes
+
 // Combined (nonce || ciphertext || tag)
 aegis128LEncrypt(msg, ad, key, nonce, tagLen?): Uint8Array
 aegis128LDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
@@ -109,6 +128,10 @@ AEGIS_128L_NONCE_SIZE // 16
 ### AEGIS-256
 
 ```typescript
+// Key/Nonce generation
+aegis256CreateKey(): Uint8Array   // 32 random bytes
+aegis256CreateNonce(): Uint8Array // 32 random bytes
+
 // Combined (nonce || ciphertext || tag)
 aegis256Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
 aegis256Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
@@ -131,6 +154,14 @@ AEGIS_256_NONCE_SIZE // 32
 Pre-configured variants for degree 2 and 4:
 
 ```typescript
+// Key/Nonce generation
+aegis128XCreateKey(): Uint8Array   // 16 random bytes
+aegis128XCreateNonce(): Uint8Array // 16 random bytes
+aegis128X2CreateKey(): Uint8Array  // alias
+aegis128X2CreateNonce(): Uint8Array
+aegis128X4CreateKey(): Uint8Array  // alias
+aegis128X4CreateNonce(): Uint8Array
+
 // Combined (nonce || ciphertext || tag)
 aegis128X2Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
 aegis128X2Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
@@ -165,6 +196,14 @@ AEGIS_128X_NONCE_SIZE // 16
 Pre-configured variants for degree 2 and 4:
 
 ```typescript
+// Key/Nonce generation
+aegis256XCreateKey(): Uint8Array   // 32 random bytes
+aegis256XCreateNonce(): Uint8Array // 32 random bytes
+aegis256X2CreateKey(): Uint8Array  // alias
+aegis256X2CreateNonce(): Uint8Array
+aegis256X4CreateKey(): Uint8Array  // alias
+aegis256X4CreateNonce(): Uint8Array
+
 // Combined (nonce || ciphertext || tag)
 aegis256X2Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
 aegis256X2Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
@@ -204,6 +243,21 @@ open examples/index.html
 ```
 
 The example demonstrates encryption/decryption with a simple UI where you can enter a message, encrypt it, and decrypt it back.
+
+## Compatibility
+
+The key/nonce generation functions use the Web Crypto API (`globalThis.crypto.getRandomValues`) which is available in:
+
+- All modern browsers
+- Node.js 19+
+- Deno
+- Bun
+
+For older Node.js versions (< 19), add this polyfill before using the library:
+
+```javascript
+globalThis.crypto = require('crypto').webcrypto;
+```
 
 ## License
 

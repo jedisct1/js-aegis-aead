@@ -9,6 +9,7 @@ import {
 	xorBlocksTo,
 	zeroPad,
 } from "./aes.js";
+import { randomBytes } from "./random.js";
 
 /**
  * AEGIS-128L cipher state.
@@ -476,4 +477,22 @@ export function aegis128LMacVerify(
 	const tagLen = tag.length as 16 | 32;
 	const expectedTag = aegis128LMac(data, key, nonce, tagLen);
 	return constantTimeEqual(tag, expectedTag);
+}
+
+/**
+ * Generates a random 16-byte key for AEGIS-128L.
+ * @returns 16-byte encryption key
+ * @throws Error if no cryptographic random source is available
+ */
+export function aegis128LCreateKey(): Uint8Array {
+	return randomBytes(AEGIS_128L_KEY_SIZE);
+}
+
+/**
+ * Generates a random 16-byte nonce for AEGIS-128L.
+ * @returns 16-byte nonce
+ * @throws Error if no cryptographic random source is available
+ */
+export function aegis128LCreateNonce(): Uint8Array {
+	return randomBytes(AEGIS_128L_NONCE_SIZE);
 }
