@@ -388,7 +388,7 @@ export const AEGIS_128L_KEY_SIZE = 16;
  * @param msg - Plaintext message
  * @param ad - Associated data (authenticated but not encrypted)
  * @param key - 16-byte encryption key
- * @param nonce - 16-byte nonce (must be unique per message with the same key)
+ * @param nonce - 16-byte nonce (optional, generates random nonce if not provided)
  * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
  * @returns Concatenated nonce || ciphertext || tag
  */
@@ -396,11 +396,12 @@ export function aegis128LEncrypt(
 	msg: Uint8Array,
 	ad: Uint8Array,
 	key: Uint8Array,
-	nonce: Uint8Array,
+	nonce: Uint8Array | null = null,
 	tagLen: 16 | 32 = 16,
 ): Uint8Array {
+	const actualNonce = nonce ?? randomBytes(AEGIS_128L_NONCE_SIZE);
 	const state = new Aegis128LState();
-	state.init(key, nonce);
+	state.init(key, actualNonce);
 
 	const adPadded = zeroPad(ad, 32);
 	for (let i = 0; i + 32 <= adPadded.length; i += 32) {
@@ -409,7 +410,7 @@ export function aegis128LEncrypt(
 
 	const nonceSize = AEGIS_128L_NONCE_SIZE;
 	const result = new Uint8Array(nonceSize + msg.length + tagLen);
-	result.set(nonce, 0);
+	result.set(actualNonce, 0);
 
 	const fullBlocks = Math.floor(msg.length / 32) * 32;
 	for (let i = 0; i < fullBlocks; i += 32) {

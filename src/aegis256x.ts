@@ -473,7 +473,7 @@ export const AEGIS_256X_KEY_SIZE = 32;
  * @param msg - Plaintext message
  * @param ad - Associated data (authenticated but not encrypted)
  * @param key - 32-byte encryption key
- * @param nonce - 32-byte nonce (must be unique per message with the same key)
+ * @param nonce - 32-byte nonce (optional, generates random nonce if not provided)
  * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
  * @param degree - Parallelism degree (default: 2)
  * @returns Concatenated nonce || ciphertext || tag
@@ -482,14 +482,15 @@ export function aegis256XEncrypt(
 	msg: Uint8Array,
 	ad: Uint8Array,
 	key: Uint8Array,
-	nonce: Uint8Array,
+	nonce: Uint8Array | null = null,
 	tagLen: 16 | 32 = 16,
 	degree: number = 2,
 ): Uint8Array {
+	const actualNonce = nonce ?? randomBytes(AEGIS_256X_NONCE_SIZE);
 	const state = new Aegis256XState(degree);
 	const rateBytes = (128 * degree) / 8;
 
-	state.init(key, nonce);
+	state.init(key, actualNonce);
 
 	const adPadded = zeroPad(ad, rateBytes);
 	for (let i = 0; i + rateBytes <= adPadded.length; i += rateBytes) {
@@ -498,7 +499,7 @@ export function aegis256XEncrypt(
 
 	const nonceSize = AEGIS_256X_NONCE_SIZE;
 	const result = new Uint8Array(nonceSize + msg.length + tagLen);
-	result.set(nonce, 0);
+	result.set(actualNonce, 0);
 
 	const fullBlocks = Math.floor(msg.length / rateBytes) * rateBytes;
 	for (let i = 0; i < fullBlocks; i += rateBytes) {
@@ -595,7 +596,7 @@ export const aegis256X2Encrypt = (
 	msg: Uint8Array,
 	ad: Uint8Array,
 	key: Uint8Array,
-	nonce: Uint8Array,
+	nonce: Uint8Array | null = null,
 	tagLen: 16 | 32 = 16,
 ) => aegis256XEncrypt(msg, ad, key, nonce, tagLen, 2);
 
@@ -612,7 +613,7 @@ export const aegis256X4Encrypt = (
 	msg: Uint8Array,
 	ad: Uint8Array,
 	key: Uint8Array,
-	nonce: Uint8Array,
+	nonce: Uint8Array | null = null,
 	tagLen: 16 | 32 = 16,
 ) => aegis256XEncrypt(msg, ad, key, nonce, tagLen, 4);
 
