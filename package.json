@@ -1,6 +1,6 @@
 {
   "name": "aegis-aead",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "AEGIS authenticated encryption algorithms",
   "type": "module",
   "main": "./dist/index.js",
