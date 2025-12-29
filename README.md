@@ -7,6 +7,30 @@ A compact, zero-dependency JavaScript/TypeScript implementation of [AEGIS](https
 
 AEGIS provides both encryption with authentication and standalone MAC functionality, with a simple API that makes it hard to misuse.
 
+## Table of Contents
+
+- [aegis-aead](#aegis-aead)
+  - [Table of Contents](#table-of-contents)
+  - [Installation](#installation)
+  - [Quick Start](#quick-start)
+  - [Choosing an Algorithm](#choosing-an-algorithm)
+  - [Usage Examples](#usage-examples)
+    - [Combined Mode](#combined-mode)
+    - [Detached Mode](#detached-mode)
+    - [In-Place Mode](#in-place-mode)
+    - [MAC (Message Authentication Code)](#mac-message-authentication-code)
+  - [API Overview](#api-overview)
+    - [Functions](#functions)
+    - [Parameters](#parameters)
+    - [Constants](#constants)
+    - [Parallel Variants (AEGIS-128X / AEGIS-256X)](#parallel-variants-aegis-128x--aegis-256x)
+  - [Security Considerations](#security-considerations)
+    - [Nonce Safety](#nonce-safety)
+    - [Tag Lengths](#tag-lengths)
+    - [Bitsliced Variants](#bitsliced-variants)
+  - [Compatibility](#compatibility)
+  - [Browser Example](#browser-example)
+
 ## Installation
 
 ```bash
@@ -15,32 +39,62 @@ bun add aegis-aead
 npm install aegis-aead
 ```
 
-## Usage
-
-### Encryption and Decryption
+## Quick Start
 
 ```typescript
-import {
-  aegis128LCreateKey,
-  aegis128LEncrypt,
-  aegis128LDecrypt
-} from "aegis-aead";
+import { aegis128LCreateKey, aegis128LEncrypt, aegis128LDecrypt } from "aegis-aead";
 
-const key = aegis128LCreateKey(); // 16 random bytes
+const key = aegis128LCreateKey();
 const message = new TextEncoder().encode("Hello, world!");
 const associatedData = new TextEncoder().encode("metadata");
 
-// Encrypt - returns nonce || ciphertext || tag
-// A random nonce is generated automatically
+// Encrypt (nonce is generated automatically)
 const sealed = aegis128LEncrypt(message, associatedData, key);
 
 // Decrypt (returns null if authentication fails)
 const decrypted = aegis128LDecrypt(sealed, associatedData, key);
 ```
 
+## Choosing an Algorithm
+
+| Algorithm     | Key      | Nonce    | Best For                                 |
+| ------------- | -------- | -------- | ---------------------------------------- |
+| AEGIS-128L    | 16 bytes | 16 bytes | General use, high throughput             |
+| AEGIS-256     | 32 bytes | 32 bytes | Large nonce, unlimited messages          |
+| AEGIS-128X    | 16 bytes | 16 bytes | Interop with native SIMD implementations |
+| AEGIS-256X    | 32 bytes | 32 bytes | Interop + large nonce                    |
+| AEGIS-128L-BS | 16 bytes | 16 bytes | Side-channel protection                  |
+| AEGIS-256-BS  | 32 bytes | 32 bytes | Side-channel + large nonce               |
+
+Recommendations:
+
+- Default choice: AEGIS-128L offers excellent performance with safe random nonces up to 2^48 messages
+- Unlimited messages: AEGIS-256 when you need unlimited random nonces (32-byte nonce eliminates collision risk)
+- Interoperability: AEGIS-128X/256X when exchanging data with native implementations using these variants
+- Hostile environments: Bitsliced variants (-BS) when attackers may observe timing
+
+Note: The X variants are designed for SIMD parallelism in native code. In JavaScript they offer no speed benefit but are provided for interoperability.
+
+## Usage Examples
+
+### Combined Mode
+
+The simplest API: returns `nonce || ciphertext || tag` in one buffer.
+
+```typescript
+import { aegis128LCreateKey, aegis128LEncrypt, aegis128LDecrypt } from "aegis-aead";
+
+const key = aegis128LCreateKey();
+const message = new TextEncoder().encode("Hello, world!");
+const ad = new TextEncoder().encode("metadata");
+
+const sealed = aegis128LEncrypt(message, ad, key);
+const decrypted = aegis128LDecrypt(sealed, ad, key);
+```
+
 ### Detached Mode
 
-For applications that need separate access to the ciphertext and tag:
+When you need separate access to ciphertext and tag:
 
 ```typescript
 import {
@@ -53,18 +107,15 @@ import {
 const key = aegis128LCreateKey();
 const nonce = aegis128LCreateNonce();
 const message = new TextEncoder().encode("Hello, world!");
-const associatedData = new TextEncoder().encode("metadata");
+const ad = new TextEncoder().encode("metadata");
 
-// Encrypt - returns ciphertext and tag separately
-const { ciphertext, tag } = aegis128LEncryptDetached(message, associatedData, key, nonce);
-
-// Decrypt
-const decrypted = aegis128LDecryptDetached(ciphertext, tag, associatedData, key, nonce);
+const { ciphertext, tag } = aegis128LEncryptDetached(message, ad, key, nonce);
+const decrypted = aegis128LDecryptDetached(ciphertext, tag, ad, key, nonce);
 ```
 
 ### In-Place Mode
 
-For zero-copy encryption/decryption that modifies data in-place:
+Zero-copy encryption that modifies the buffer directly:
 
 ```typescript
 import {
@@ -77,310 +128,128 @@ import {
 const key = aegis128LCreateKey();
 const nonce = aegis128LCreateNonce();
 const data = new TextEncoder().encode("Hello, world!");
-const associatedData = new TextEncoder().encode("metadata");
+const ad = new TextEncoder().encode("metadata");
 
-// Encrypt in-place - data is modified directly
-const tag = aegis128LEncryptDetachedInPlace(data, associatedData, key, nonce);
+// Encrypt: data is modified, tag is returned
+const tag = aegis128LEncryptDetachedInPlace(data, ad, key, nonce);
 
-// Decrypt in-place - returns true if authentication succeeds
-const success = aegis128LDecryptDetachedInPlace(data, tag, associatedData, key, nonce);
+// Decrypt: returns true if authentication succeeds
+const success = aegis128LDecryptDetachedInPlace(data, tag, ad, key, nonce);
 ```
 
 ### MAC (Message Authentication Code)
 
+Authenticate data without encrypting:
+
 ```typescript
-import {
-  aegis128LCreateKey,
-  aegis128LMac,
-  aegis128LMacVerify
-} from "aegis-aead";
+import { aegis128LCreateKey, aegis128LMac, aegis128LMacVerify } from "aegis-aead";
 
 const key = aegis128LCreateKey();
 const data = new TextEncoder().encode("data to authenticate");
 
-// Generate MAC (nonce defaults to zero if not provided)
 const tag = aegis128LMac(data, key);
-
-// Verify MAC
 const valid = aegis128LMacVerify(data, tag, key);
 ```
 
-## Algorithms
+## API Overview
 
-| Algorithm     | Key Size | Nonce Size | Block Size | Use Case                           |
-| ------------- | -------- | ---------- | ---------- | ---------------------------------- |
-| AEGIS-128L    | 16 bytes | 16 bytes   | 32 bytes   | High throughput on 64-bit CPUs     |
-| AEGIS-256     | 32 bytes | 32 bytes   | 16 bytes   | 256-bit security level             |
-| AEGIS-128X    | 16 bytes | 16 bytes   | 32×D bytes | Multi-lane AEGIS-128L (D = degree) |
-| AEGIS-256X    | 32 bytes | 32 bytes   | 16×D bytes | Multi-lane AEGIS-256 (D = degree)  |
-| AEGIS-128L-BS | 16 bytes | 16 bytes   | 32 bytes   | Bitsliced                          |
-| AEGIS-256-BS  | 32 bytes | 32 bytes   | 16 bytes   | Bitsliced                          |
+All AEGIS variants follow the same API pattern. Replace `aegis128L` with your chosen algorithm (`aegis256`, `aegis128X2`, `aegis128X4`, `aegis256X2`, `aegis256X4`, `aegis128LBs`, `aegis256Bs`).
 
-### Bitsliced Variants
+### Functions
 
-The `-BS` (bitsliced) variants provide protection against cache-timing side-channel attacks at the cost of ~20% performance overhead. They process AES operations without lookup tables, making execution time independent of the key and data values.
+| Function                                                | Description                                        |
+| ------------------------------------------------------- | -------------------------------------------------- |
+| `createKey()`                                           | Generate a random key                              |
+| `createNonce()`                                         | Generate a random nonce                            |
+| `encrypt(msg, ad, key, nonce?, tagLen?)`                | Encrypt, returns `nonce \|\| ciphertext \|\| tag`  |
+| `decrypt(sealed, ad, key, tagLen?)`                     | Decrypt combined output, returns `null` on failure |
+| `encryptDetached(msg, ad, key, nonce, tagLen?)`         | Encrypt, returns `{ ciphertext, tag }`             |
+| `decryptDetached(ct, tag, ad, key, nonce)`              | Decrypt detached, returns `null` on failure        |
+| `encryptDetachedInPlace(data, ad, key, nonce, tagLen?)` | Encrypt in-place, returns tag                      |
+| `decryptDetachedInPlace(data, tag, ad, key, nonce)`     | Decrypt in-place, returns `boolean`                |
+| `mac(data, key, nonce?, tagLen?)`                       | Generate MAC tag                                   |
+| `macVerify(data, tag, key, nonce?)`                     | Verify MAC tag                                     |
 
-Use the bitsliced variants when:
-- Adversaries may be able to observe timing information (shared hosting, cloud VMs)
-- The key holder may encrypt or decrypt attacker-controlled data
-- Maximum side-channel resistance is required
+### Parameters
 
-For most use cases, the standard implementations are safe since AEGIS's continuous state mixing makes practical timing attacks extremely difficult.
+- msg/data: `Uint8Array` - Data to encrypt/authenticate
+- ad: `Uint8Array` - Associated data (authenticated but not encrypted)
+- key: `Uint8Array` - Encryption key (16 or 32 bytes depending on algorithm)
+- nonce: `Uint8Array` - Number used once (auto-generated if omitted in combined mode)
+- tagLen: `number` - Authentication tag length: `16` (default) or `32`
 
-### Random Nonces
+### Constants
 
-When using random nonces (the default for combined-mode functions):
+Each algorithm exports size constants:
 
-- AEGIS-128L/128X: Safe for up to 2^48 messages per key, regardless of their size
-- AEGIS-256/256X: No practical limits on the number of messages per key
+```typescript
+import { AEGIS_128L_KEY_SIZE, AEGIS_128L_NONCE_SIZE } from "aegis-aead";
+// AEGIS_128L_KEY_SIZE = 16
+// AEGIS_128L_NONCE_SIZE = 16
+```
+
+### Parallel Variants (AEGIS-128X / AEGIS-256X)
+
+The X variants support a configurable degree of parallelism:
+
+```typescript
+// Pre-configured for degree 2 and 4
+import { aegis128X2Encrypt, aegis128X4Encrypt } from "aegis-aead";
+
+// Or use custom degree (typically 2 or 4)
+import { aegis128XEncrypt } from "aegis-aead";
+const sealed = aegis128XEncrypt(msg, ad, key, nonce, 16, 4); // degree=4
+```
+
+## Security Considerations
+
+### Nonce Safety
+
+- Combined mode generates random nonces automatically
+- Detached mode requires you to provide nonces - never reuse a nonce with the same key
+- AEGIS-128L/128X: Safe for up to 2^48 messages per key with random nonces
+- AEGIS-256/256X: No practical limits on message count
 
 ### Tag Lengths
 
-All algorithms support two tag lengths:
-
-- 16 bytes (128-bit) - default
-- 32 bytes (256-bit) - pass `32` as the last parameter to encrypt/MAC functions
-
-## API Reference
-
-### AEGIS-128L
+All algorithms support 16-byte (128-bit) and 32-byte (256-bit) tags:
 
 ```typescript
-// Key/Nonce generation
-aegis128LCreateKey(): Uint8Array   // 16 random bytes
-aegis128LCreateNonce(): Uint8Array // 16 random bytes
-
-// Combined (nonce || ciphertext || tag)
-aegis128LEncrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
-aegis128LDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
-
-// Detached (separate ciphertext and tag)
-aegis128LEncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
-aegis128LDecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
-
-// In-place (modifies data buffer directly)
-aegis128LEncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array // returns tag
-aegis128LDecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
-
-// MAC (nonce is optional, defaults to zero)
-aegis128LMac(data, key, nonce?, tagLen?): Uint8Array
-aegis128LMacVerify(data, tag, key, nonce?): boolean
-
-// Constants
-AEGIS_128L_KEY_SIZE   // 16
-AEGIS_128L_NONCE_SIZE // 16
+// 32-byte tag
+const sealed = aegis128LEncrypt(msg, ad, key, undefined, 32);
 ```
 
-### AEGIS-256
+### Bitsliced Variants
 
-```typescript
-// Key/Nonce generation
-aegis256CreateKey(): Uint8Array   // 32 random bytes
-aegis256CreateNonce(): Uint8Array // 32 random bytes
+The `-BS` variants use a constant-time bitsliced AES implementation that doesn't use lookup tables. This prevents cache-timing attacks at the cost of ~20% performance.
 
-// Combined (nonce || ciphertext || tag)
-aegis256Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
-aegis256Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
+Use bitsliced variants when:
+- Running on shared infrastructure (cloud VMs, containers)
+- Attackers may observe timing information
+- Processing attacker-controlled data with secret keys
 
-// Detached (separate ciphertext and tag)
-aegis256EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
-aegis256DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
-
-// In-place (modifies data buffer directly)
-aegis256EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array // returns tag
-aegis256DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
-
-// MAC (nonce is optional, defaults to zero)
-aegis256Mac(data, key, nonce?, tagLen?): Uint8Array
-aegis256MacVerify(data, tag, key, nonce?): boolean
-
-// Constants
-AEGIS_256_KEY_SIZE   // 32
-AEGIS_256_NONCE_SIZE // 32
-```
-
-### AEGIS-128X
-
-Pre-configured variants for degree 2 and 4:
-
-```typescript
-// Key/Nonce generation
-aegis128XCreateKey(): Uint8Array   // 16 random bytes
-aegis128XCreateNonce(): Uint8Array // 16 random bytes
-aegis128X2CreateKey(): Uint8Array  // alias
-aegis128X2CreateNonce(): Uint8Array
-aegis128X4CreateKey(): Uint8Array  // alias
-aegis128X4CreateNonce(): Uint8Array
-
-// Combined (nonce || ciphertext || tag)
-aegis128X2Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
-aegis128X2Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
-aegis128X4Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
-aegis128X4Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
-
-// Detached (separate ciphertext and tag)
-aegis128X2EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
-aegis128X2DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
-aegis128X4EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
-aegis128X4DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
-
-// In-place (modifies data buffer directly)
-aegis128X2EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
-aegis128X2DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
-aegis128X4EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
-aegis128X4DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
-
-// MAC (nonce is optional, defaults to zero)
-aegis128X2Mac(data, key, nonce?, tagLen?): Uint8Array
-aegis128X2MacVerify(data, tag, key, nonce?): boolean
-aegis128X4Mac(data, key, nonce?, tagLen?): Uint8Array
-aegis128X4MacVerify(data, tag, key, nonce?): boolean
-
-// Custom degree
-aegis128XEncrypt(msg, ad, key, nonce?, tagLen?, degree?): Uint8Array
-aegis128XDecrypt(sealed, ad, key, tagLen?, degree?): Uint8Array | null
-aegis128XEncryptDetached(msg, ad, key, nonce, tagLen?, degree?): { ciphertext, tag }
-aegis128XDecryptDetached(ciphertext, tag, ad, key, nonce, degree?): Uint8Array | null
-aegis128XEncryptDetachedInPlace(data, ad, key, nonce, tagLen?, degree?): Uint8Array
-aegis128XDecryptDetachedInPlace(data, tag, ad, key, nonce, degree?): boolean
-aegis128XMac(data, key, nonce?, tagLen?, degree?): Uint8Array
-aegis128XMacVerify(data, tag, key, nonce?, degree?): boolean
-
-// Constants
-AEGIS_128X_KEY_SIZE   // 16
-AEGIS_128X_NONCE_SIZE // 16
-```
-
-### AEGIS-256X
-
-Pre-configured variants for degree 2 and 4:
-
-```typescript
-// Key/Nonce generation
-aegis256XCreateKey(): Uint8Array   // 32 random bytes
-aegis256XCreateNonce(): Uint8Array // 32 random bytes
-aegis256X2CreateKey(): Uint8Array  // alias
-aegis256X2CreateNonce(): Uint8Array
-aegis256X4CreateKey(): Uint8Array  // alias
-aegis256X4CreateNonce(): Uint8Array
-
-// Combined (nonce || ciphertext || tag)
-aegis256X2Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
-aegis256X2Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
-aegis256X4Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
-aegis256X4Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
-
-// Detached (separate ciphertext and tag)
-aegis256X2EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
-aegis256X2DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
-aegis256X4EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
-aegis256X4DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
-
-// In-place (modifies data buffer directly)
-aegis256X2EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
-aegis256X2DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
-aegis256X4EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
-aegis256X4DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
-
-// MAC (nonce is optional, defaults to zero)
-aegis256X2Mac(data, key, nonce?, tagLen?): Uint8Array
-aegis256X2MacVerify(data, tag, key, nonce?): boolean
-aegis256X4Mac(data, key, nonce?, tagLen?): Uint8Array
-aegis256X4MacVerify(data, tag, key, nonce?): boolean
-
-// Custom degree
-aegis256XEncrypt(msg, ad, key, nonce?, tagLen?, degree?): Uint8Array
-aegis256XDecrypt(sealed, ad, key, tagLen?, degree?): Uint8Array | null
-aegis256XEncryptDetached(msg, ad, key, nonce, tagLen?, degree?): { ciphertext, tag }
-aegis256XDecryptDetached(ciphertext, tag, ad, key, nonce, degree?): Uint8Array | null
-aegis256XEncryptDetachedInPlace(data, ad, key, nonce, tagLen?, degree?): Uint8Array
-aegis256XDecryptDetachedInPlace(data, tag, ad, key, nonce, degree?): boolean
-aegis256XMac(data, key, nonce?, tagLen?, degree?): Uint8Array
-aegis256XMacVerify(data, tag, key, nonce?, degree?): boolean
-
-// Constants
-AEGIS_256X_KEY_SIZE   // 32
-AEGIS_256X_NONCE_SIZE // 32
-```
-
-### AEGIS-128L-BS (Bitsliced)
-
-```typescript
-// Key/Nonce generation
-aegis128LBsCreateKey(): Uint8Array   // 16 random bytes
-aegis128LBsCreateNonce(): Uint8Array // 16 random bytes
-
-// Combined (nonce || ciphertext || tag)
-aegis128LBsEncrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
-aegis128LBsDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
-
-// Detached (separate ciphertext and tag)
-aegis128LBsEncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
-aegis128LBsDecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
-
-// In-place (modifies data buffer directly)
-aegis128LBsEncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
-aegis128LBsDecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
-
-// MAC (nonce is optional, defaults to zero)
-aegis128LBsMac(data, key, nonce?, tagLen?): Uint8Array
-aegis128LBsMacVerify(data, tag, key, nonce?): boolean
-
-// Constants
-AEGIS_128L_BS_KEY_SIZE   // 16
-AEGIS_128L_BS_NONCE_SIZE // 16
-```
-
-### AEGIS-256-BS (Bitsliced)
-
-```typescript
-// Key/Nonce generation
-aegis256BsCreateKey(): Uint8Array   // 32 random bytes
-aegis256BsCreateNonce(): Uint8Array // 32 random bytes
-
-// Combined (nonce || ciphertext || tag)
-aegis256BsEncrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
-aegis256BsDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
-
-// Detached (separate ciphertext and tag)
-aegis256BsEncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
-aegis256BsDecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
-
-// In-place (modifies data buffer directly)
-aegis256BsEncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
-aegis256BsDecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
-
-// MAC (nonce is optional, defaults to zero)
-aegis256BsMac(data, key, nonce?, tagLen?): Uint8Array
-aegis256BsMacVerify(data, tag, key, nonce?): boolean
-
-// Constants
-AEGIS_256_BS_KEY_SIZE   // 32
-AEGIS_256_BS_NONCE_SIZE // 32
-```
-
-## Browser Example
-
-A browser example is included in `examples/`. To build and run it:
-
-```bash
-bun run build:example
-open examples/index.html
-```
-
-The example demonstrates encryption/decryption with a simple UI where you can enter a message, encrypt it, and decrypt it back.
+For most applications, standard variants are safe since AEGIS's continuous state mixing makes timing attacks impractical.
 
 ## Compatibility
 
-The key/nonce generation functions use the Web Crypto API (`globalThis.crypto.getRandomValues`) which is available in:
+Runtime Requirements:
+
+The library uses the Web Crypto API (`crypto.getRandomValues`) for key/nonce generation:
 
 - All modern browsers
 - Node.js 18+
 - Deno
 - Bun
 
-## Interoperability
+Interoperability:
 
-This library follows the [AEGIS IETF draft specification](https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/) and can exchange encrypted messages with any compliant implementation, including native libraries in C, Rust, Go, Zig, and more.
+This library implements the [AEGIS IETF draft specification](https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/) and interoperates with any compliant implementation. See the [full list of AEGIS implementations](https://github.com/cfrg/draft-irtf-cfrg-aegis-aead?tab=readme-ov-file#known-implementations).
 
-See the [full list of AEGIS implementations](https://github.com/cfrg/draft-irtf-cfrg-aegis-aead?tab=readme-ov-file#known-implementations).
+## Browser Example
+
+A browser demo is included:
+
+```bash
+bun run build:example
+open examples/index.html
+```
