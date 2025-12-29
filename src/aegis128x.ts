@@ -225,6 +225,35 @@ export class Aegis128XState {
 	}
 
 	/**
+	 * Encrypts a plaintext block in-place.
+	 * @param block - Buffer (plaintext in, ciphertext out), size 32*degree bytes
+	 */
+	encInPlace(block: Uint8Array): void {
+		this.computeZ();
+		const z0 = this.z0;
+		const z1 = this.z1;
+
+		const halfRateBytes = this.rate / 16;
+		const rateBytes = this.rate / 8;
+
+		this.update(
+			block.subarray(0, halfRateBytes),
+			block.subarray(halfRateBytes, rateBytes),
+		);
+
+		for (let i = 0; i < halfRateBytes; i++) block[i] ^= z0[i]!;
+		for (let i = 0; i < halfRateBytes; i++) block[halfRateBytes + i] ^= z1[i]!;
+	}
+
+	/**
+	 * Decrypts a ciphertext block in-place.
+	 * @param block - Buffer (ciphertext in, plaintext out), size 32*degree bytes
+	 */
+	decInPlace(block: Uint8Array): void {
+		this.decTo(block, block);
+	}
+
+	/**
 	 * Decrypts a partial (final) ciphertext block.
 	 * @param cn - Partial ciphertext block (smaller than 32*degree bytes)
 	 * @returns Decrypted plaintext of the same length
@@ -486,6 +515,145 @@ export function aegis128XDecryptDetached(
 
 	return msg;
 }
+
+/**
+ * Encrypts a message in-place using AEGIS-128X (detached mode).
+ * The input buffer is modified to contain the ciphertext.
+ * @param data - Buffer containing plaintext (will be overwritten with ciphertext)
+ * @param ad - Associated data (authenticated but not encrypted)
+ * @param key - 16-byte encryption key
+ * @param nonce - 16-byte nonce (must be unique per message with the same key)
+ * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
+ * @param degree - Parallelism degree (default: 2)
+ * @returns Authentication tag
+ */
+export function aegis128XEncryptDetachedInPlace(
+	data: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+	tagLen: 16 | 32 = 16,
+	degree: number = 2,
+): Uint8Array {
+	const state = new Aegis128XState(degree);
+	const rateBytes = (256 * degree) / 8;
+
+	state.init(key, nonce);
+
+	const adPadded = zeroPad(ad, rateBytes);
+	for (let i = 0; i + rateBytes <= adPadded.length; i += rateBytes) {
+		state.absorb(adPadded.subarray(i, i + rateBytes));
+	}
+
+	const msgLen = data.length;
+	const fullBlocksLen = Math.floor(msgLen / rateBytes) * rateBytes;
+
+	for (let i = 0; i < fullBlocksLen; i += rateBytes) {
+		state.encInPlace(data.subarray(i, i + rateBytes));
+	}
+
+	if (msgLen > fullBlocksLen) {
+		const lastPartial = data.subarray(fullBlocksLen);
+		const lastBlock = zeroPad(lastPartial, rateBytes);
+		const encBlock = state.enc(lastBlock);
+		lastPartial.set(encBlock.subarray(0, lastPartial.length));
+	}
+
+	return state.finalize(BigInt(ad.length * 8), BigInt(msgLen * 8), tagLen);
+}
+
+/**
+ * Decrypts a message in-place using AEGIS-128X (detached mode).
+ * The input buffer is modified to contain the plaintext (or zeroed on failure).
+ * @param data - Buffer containing ciphertext (will be overwritten with plaintext)
+ * @param tag - Authentication tag (16 or 32 bytes)
+ * @param ad - Associated data (must match what was used during encryption)
+ * @param key - 16-byte encryption key
+ * @param nonce - 16-byte nonce (must match what was used during encryption)
+ * @param degree - Parallelism degree (default: 2)
+ * @returns True if authentication succeeds, false otherwise
+ */
+export function aegis128XDecryptDetachedInPlace(
+	data: Uint8Array,
+	tag: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+	degree: number = 2,
+): boolean {
+	const tagLen = tag.length as 16 | 32;
+	const state = new Aegis128XState(degree);
+	const rateBytes = (256 * degree) / 8;
+
+	state.init(key, nonce);
+
+	const adPadded = zeroPad(ad, rateBytes);
+	for (let i = 0; i + rateBytes <= adPadded.length; i += rateBytes) {
+		state.absorb(adPadded.subarray(i, i + rateBytes));
+	}
+
+	const msgLen = data.length;
+	const fullBlocksLen = Math.floor(msgLen / rateBytes) * rateBytes;
+
+	for (let i = 0; i < fullBlocksLen; i += rateBytes) {
+		state.decInPlace(data.subarray(i, i + rateBytes));
+	}
+
+	if (msgLen > fullBlocksLen) {
+		const lastPartial = data.subarray(fullBlocksLen);
+		const decrypted = state.decPartial(lastPartial);
+		lastPartial.set(decrypted);
+	}
+
+	const expectedTag = state.finalize(
+		BigInt(ad.length * 8),
+		BigInt(msgLen * 8),
+		tagLen,
+	);
+
+	if (!constantTimeEqual(tag, expectedTag)) {
+		data.fill(0);
+		return false;
+	}
+
+	return true;
+}
+
+/** AEGIS-128X2 in-place encryption - detached mode (degree=2). */
+export const aegis128X2EncryptDetachedInPlace = (
+	data: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+	tagLen: 16 | 32 = 16,
+) => aegis128XEncryptDetachedInPlace(data, ad, key, nonce, tagLen, 2);
+
+/** AEGIS-128X2 in-place decryption - detached mode (degree=2). */
+export const aegis128X2DecryptDetachedInPlace = (
+	data: Uint8Array,
+	tag: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+) => aegis128XDecryptDetachedInPlace(data, tag, ad, key, nonce, 2);
+
+/** AEGIS-128X4 in-place encryption - detached mode (degree=4). */
+export const aegis128X4EncryptDetachedInPlace = (
+	data: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+	tagLen: 16 | 32 = 16,
+) => aegis128XEncryptDetachedInPlace(data, ad, key, nonce, tagLen, 4);
+
+/** AEGIS-128X4 in-place decryption - detached mode (degree=4). */
+export const aegis128X4DecryptDetachedInPlace = (
+	data: Uint8Array,
+	tag: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+) => aegis128XDecryptDetachedInPlace(data, tag, ad, key, nonce, 4);
 
 /** Nonce size for AEGIS-128X in bytes. */
 export const AEGIS_128X_NONCE_SIZE = 16;

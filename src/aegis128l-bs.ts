@@ -271,6 +271,22 @@ export class Aegis128LBsState {
 	}
 
 	/**
+	 * Encrypts a 32-byte plaintext block in-place.
+	 * @param block - 32-byte buffer (plaintext in, ciphertext out)
+	 */
+	encInPlace(block: Uint8Array): void {
+		this.encTo(block, block);
+	}
+
+	/**
+	 * Decrypts a 32-byte ciphertext block in-place.
+	 * @param block - 32-byte buffer (ciphertext in, plaintext out)
+	 */
+	decInPlace(block: Uint8Array): void {
+		this.decTo(block, block);
+	}
+
+	/**
 	 * Decrypts a partial (final) ciphertext block smaller than 32 bytes.
 	 * @param cn - Partial ciphertext block (1-31 bytes)
 	 * @returns Decrypted plaintext of the same length
@@ -475,6 +491,97 @@ export function aegis128LBsDecryptDetached(
 	}
 
 	return msg;
+}
+
+/**
+ * Encrypts a message in-place using bitsliced AEGIS-128L (detached mode).
+ * The input buffer is modified to contain the ciphertext.
+ * @param data - Buffer containing plaintext (will be overwritten with ciphertext)
+ * @param ad - Associated data (authenticated but not encrypted)
+ * @param key - 16-byte encryption key
+ * @param nonce - 16-byte nonce (must be unique per message with the same key)
+ * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
+ * @returns Authentication tag
+ */
+export function aegis128LBsEncryptDetachedInPlace(
+	data: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+	tagLen: 16 | 32 = 16,
+): Uint8Array {
+	const state = new Aegis128LBsState();
+	state.init(key, nonce);
+
+	const adPadded = zeroPad(ad, RATE);
+	for (let i = 0; i + RATE <= adPadded.length; i += RATE) {
+		state.absorb(adPadded.subarray(i, i + RATE));
+	}
+
+	const msgLen = data.length;
+	const fullBlocksLen = Math.floor(msgLen / RATE) * RATE;
+
+	for (let i = 0; i < fullBlocksLen; i += RATE) {
+		state.encInPlace(data.subarray(i, i + RATE));
+	}
+
+	if (msgLen > fullBlocksLen) {
+		const lastPartial = data.subarray(fullBlocksLen);
+		const lastBlock = zeroPad(lastPartial, RATE);
+		const encBlock = state.enc(lastBlock);
+		lastPartial.set(encBlock.subarray(0, lastPartial.length));
+	}
+
+	return state.finalize(ad.length, msgLen, tagLen);
+}
+
+/**
+ * Decrypts a message in-place using bitsliced AEGIS-128L (detached mode).
+ * The input buffer is modified to contain the plaintext (or zeroed on failure).
+ * @param data - Buffer containing ciphertext (will be overwritten with plaintext)
+ * @param tag - Authentication tag (16 or 32 bytes)
+ * @param ad - Associated data (must match what was used during encryption)
+ * @param key - 16-byte encryption key
+ * @param nonce - 16-byte nonce (must match what was used during encryption)
+ * @returns True if authentication succeeds, false otherwise
+ */
+export function aegis128LBsDecryptDetachedInPlace(
+	data: Uint8Array,
+	tag: Uint8Array,
+	ad: Uint8Array,
+	key: Uint8Array,
+	nonce: Uint8Array,
+): boolean {
+	const tagLen = tag.length as 16 | 32;
+	const state = new Aegis128LBsState();
+	state.init(key, nonce);
+
+	const adPadded = zeroPad(ad, RATE);
+	for (let i = 0; i + RATE <= adPadded.length; i += RATE) {
+		state.absorb(adPadded.subarray(i, i + RATE));
+	}
+
+	const msgLen = data.length;
+	const fullBlocksLen = Math.floor(msgLen / RATE) * RATE;
+
+	for (let i = 0; i < fullBlocksLen; i += RATE) {
+		state.decInPlace(data.subarray(i, i + RATE));
+	}
+
+	if (msgLen > fullBlocksLen) {
+		const lastPartial = data.subarray(fullBlocksLen);
+		const decrypted = state.decPartial(lastPartial);
+		lastPartial.set(decrypted);
+	}
+
+	const expectedTag = state.finalize(ad.length, msgLen, tagLen);
+
+	if (!constantTimeEqual(tag, expectedTag)) {
+		data.fill(0);
+		return false;
+	}
+
+	return true;
 }
 
 export const AEGIS_128L_BS_NONCE_SIZE = 16;

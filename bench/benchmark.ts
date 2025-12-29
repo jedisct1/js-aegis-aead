@@ -1,12 +1,20 @@
 import {
 	aegis128LBsEncrypt,
+	aegis128LBsEncryptDetachedInPlace,
 	aegis128LEncrypt,
+	aegis128LEncryptDetachedInPlace,
 	aegis128X2Encrypt,
+	aegis128X2EncryptDetachedInPlace,
 	aegis128X4Encrypt,
+	aegis128X4EncryptDetachedInPlace,
 	aegis256BsEncrypt,
+	aegis256BsEncryptDetachedInPlace,
 	aegis256Encrypt,
+	aegis256EncryptDetachedInPlace,
 	aegis256X2Encrypt,
+	aegis256X2EncryptDetachedInPlace,
 	aegis256X4Encrypt,
+	aegis256X4EncryptDetachedInPlace,
 } from "../src/index.ts";
 
 const SIZES = [64, 1024, 16384, 1048576];
@@ -67,32 +75,72 @@ const variants = [
 		fn: (msg: Uint8Array) => aegis128LEncrypt(msg, ad, key16, nonce16),
 	},
 	{
+		name: "AEGIS-128L (in-place)",
+		fn: (msg: Uint8Array) =>
+			aegis128LEncryptDetachedInPlace(msg, ad, key16, nonce16),
+	},
+	{
 		name: "AEGIS-128L-BS",
 		fn: (msg: Uint8Array) => aegis128LBsEncrypt(msg, ad, key16, nonce16),
+	},
+	{
+		name: "AEGIS-128L-BS (in-place)",
+		fn: (msg: Uint8Array) =>
+			aegis128LBsEncryptDetachedInPlace(msg, ad, key16, nonce16),
 	},
 	{
 		name: "AEGIS-256",
 		fn: (msg: Uint8Array) => aegis256Encrypt(msg, ad, key32, nonce32),
 	},
 	{
+		name: "AEGIS-256 (in-place)",
+		fn: (msg: Uint8Array) =>
+			aegis256EncryptDetachedInPlace(msg, ad, key32, nonce32),
+	},
+	{
 		name: "AEGIS-256-BS",
 		fn: (msg: Uint8Array) => aegis256BsEncrypt(msg, ad, key32, nonce32),
+	},
+	{
+		name: "AEGIS-256-BS (in-place)",
+		fn: (msg: Uint8Array) =>
+			aegis256BsEncryptDetachedInPlace(msg, ad, key32, nonce32),
 	},
 	{
 		name: "AEGIS-128X2",
 		fn: (msg: Uint8Array) => aegis128X2Encrypt(msg, ad, key16, nonce16),
 	},
 	{
+		name: "AEGIS-128X2 (in-place)",
+		fn: (msg: Uint8Array) =>
+			aegis128X2EncryptDetachedInPlace(msg, ad, key16, nonce16),
+	},
+	{
 		name: "AEGIS-128X4",
 		fn: (msg: Uint8Array) => aegis128X4Encrypt(msg, ad, key16, nonce16),
+	},
+	{
+		name: "AEGIS-128X4 (in-place)",
+		fn: (msg: Uint8Array) =>
+			aegis128X4EncryptDetachedInPlace(msg, ad, key16, nonce16),
 	},
 	{
 		name: "AEGIS-256X2",
 		fn: (msg: Uint8Array) => aegis256X2Encrypt(msg, ad, key32, nonce32),
 	},
 	{
+		name: "AEGIS-256X2 (in-place)",
+		fn: (msg: Uint8Array) =>
+			aegis256X2EncryptDetachedInPlace(msg, ad, key32, nonce32),
+	},
+	{
 		name: "AEGIS-256X4",
 		fn: (msg: Uint8Array) => aegis256X4Encrypt(msg, ad, key32, nonce32),
+	},
+	{
+		name: "AEGIS-256X4 (in-place)",
+		fn: (msg: Uint8Array) =>
+			aegis256X4EncryptDetachedInPlace(msg, ad, key32, nonce32),
 	},
 ];
 

@@ -3,8 +3,10 @@ import {
 	AEGIS_256_BS_NONCE_SIZE,
 	aegis256BsDecrypt,
 	aegis256BsDecryptDetached,
+	aegis256BsDecryptDetachedInPlace,
 	aegis256BsEncrypt,
 	aegis256BsEncryptDetached,
+	aegis256BsEncryptDetachedInPlace,
 	aegis256BsMac,
 	aegis256BsMacVerify,
 } from "../src/aegis256-bs.ts";
@@ -422,5 +424,77 @@ describe("AEGISMAC-256 Bitsliced", () => {
 		const tag = hexToBytes("8441d68a83671d6c24ab93cf39c98c1a");
 
 		expect(aegis256BsMacVerify(data, tag, key, nonce)).toBe(false);
+	});
+});
+
+describe("AEGIS-256-BS In-Place Encryption/Decryption", () => {
+	test("In-place encrypt produces same ciphertext as regular encrypt", () => {
+		const key = hexToBytes(
+			"1001000000000000000000000000000000000000000000000000000000000000",
+		);
+		const nonce = hexToBytes(
+			"1000020000000000000000000000000000000000000000000000000000000000",
+		);
+		const ad = hexToBytes("0001020304050607");
+		const msg = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+
+		const { ciphertext: expected, tag: expectedTag } =
+			aegis256BsEncryptDetached(msg, ad, key, nonce, 16);
+
+		const data = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+		const tag = aegis256BsEncryptDetachedInPlace(data, ad, key, nonce, 16);
+
+		expect(bytesToHex(data)).toBe(bytesToHex(expected));
+		expect(bytesToHex(tag)).toBe(bytesToHex(expectedTag));
+	});
+
+	test("In-place roundtrip", () => {
+		const key = hexToBytes(
+			"1001000000000000000000000000000000000000000000000000000000000000",
+		);
+		const nonce = hexToBytes(
+			"1000020000000000000000000000000000000000000000000000000000000000",
+		);
+		const ad = hexToBytes("0001020304050607");
+		const originalMsg = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+
+		const data = new Uint8Array(originalMsg);
+		const tag = aegis256BsEncryptDetachedInPlace(data, ad, key, nonce, 16);
+
+		const result = aegis256BsDecryptDetachedInPlace(data, tag, ad, key, nonce);
+		expect(result).toBe(true);
+		expect(bytesToHex(data)).toBe(bytesToHex(originalMsg));
+	});
+
+	test("In-place decrypt fails with wrong tag", () => {
+		const key = hexToBytes(
+			"1001000000000000000000000000000000000000000000000000000000000000",
+		);
+		const nonce = hexToBytes(
+			"1000020000000000000000000000000000000000000000000000000000000000",
+		);
+		const ad = hexToBytes("0001020304050607");
+		const data = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+		aegis256BsEncryptDetachedInPlace(data, ad, key, nonce, 16);
+
+		const wrongTag = new Uint8Array(16);
+		const result = aegis256BsDecryptDetachedInPlace(
+			data,
+			wrongTag,
+			ad,
+			key,
+			nonce,
+		);
+
+		expect(result).toBe(false);
+		expect(data.every((b) => b === 0)).toBe(true);
 	});
 });

@@ -62,6 +62,30 @@ const { ciphertext, tag } = aegis128LEncryptDetached(message, associatedData, ke
 const decrypted = aegis128LDecryptDetached(ciphertext, tag, associatedData, key, nonce);
 ```
 
+### In-Place Mode
+
+For zero-copy encryption/decryption that modifies data in-place:
+
+```typescript
+import {
+  aegis128LCreateKey,
+  aegis128LCreateNonce,
+  aegis128LEncryptDetachedInPlace,
+  aegis128LDecryptDetachedInPlace
+} from "aegis-aead";
+
+const key = aegis128LCreateKey();
+const nonce = aegis128LCreateNonce();
+const data = new TextEncoder().encode("Hello, world!");
+const associatedData = new TextEncoder().encode("metadata");
+
+// Encrypt in-place - data is modified directly
+const tag = aegis128LEncryptDetachedInPlace(data, associatedData, key, nonce);
+
+// Decrypt in-place - returns true if authentication succeeds
+const success = aegis128LDecryptDetachedInPlace(data, tag, associatedData, key, nonce);
+```
+
 ### MAC (Message Authentication Code)
 
 ```typescript
@@ -134,6 +158,10 @@ aegis128LDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
 aegis128LEncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis128LDecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 
+// In-place (modifies data buffer directly)
+aegis128LEncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array // returns tag
+aegis128LDecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
+
 // MAC (nonce is optional, defaults to zero)
 aegis128LMac(data, key, nonce?, tagLen?): Uint8Array
 aegis128LMacVerify(data, tag, key, nonce?): boolean
@@ -157,6 +185,10 @@ aegis256Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
 // Detached (separate ciphertext and tag)
 aegis256EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis256DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
+
+// In-place (modifies data buffer directly)
+aegis256EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array // returns tag
+aegis256DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
 
 // MAC (nonce is optional, defaults to zero)
 aegis256Mac(data, key, nonce?, tagLen?): Uint8Array
@@ -192,6 +224,12 @@ aegis128X2DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 aegis128X4EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis128X4DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 
+// In-place (modifies data buffer directly)
+aegis128X2EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
+aegis128X2DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
+aegis128X4EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
+aegis128X4DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
+
 // MAC (nonce is optional, defaults to zero)
 aegis128X2Mac(data, key, nonce?, tagLen?): Uint8Array
 aegis128X2MacVerify(data, tag, key, nonce?): boolean
@@ -203,6 +241,8 @@ aegis128XEncrypt(msg, ad, key, nonce?, tagLen?, degree?): Uint8Array
 aegis128XDecrypt(sealed, ad, key, tagLen?, degree?): Uint8Array | null
 aegis128XEncryptDetached(msg, ad, key, nonce, tagLen?, degree?): { ciphertext, tag }
 aegis128XDecryptDetached(ciphertext, tag, ad, key, nonce, degree?): Uint8Array | null
+aegis128XEncryptDetachedInPlace(data, ad, key, nonce, tagLen?, degree?): Uint8Array
+aegis128XDecryptDetachedInPlace(data, tag, ad, key, nonce, degree?): boolean
 aegis128XMac(data, key, nonce?, tagLen?, degree?): Uint8Array
 aegis128XMacVerify(data, tag, key, nonce?, degree?): boolean
 
@@ -236,6 +276,12 @@ aegis256X2DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 aegis256X4EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis256X4DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 
+// In-place (modifies data buffer directly)
+aegis256X2EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
+aegis256X2DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
+aegis256X4EncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
+aegis256X4DecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
+
 // MAC (nonce is optional, defaults to zero)
 aegis256X2Mac(data, key, nonce?, tagLen?): Uint8Array
 aegis256X2MacVerify(data, tag, key, nonce?): boolean
@@ -247,6 +293,8 @@ aegis256XEncrypt(msg, ad, key, nonce?, tagLen?, degree?): Uint8Array
 aegis256XDecrypt(sealed, ad, key, tagLen?, degree?): Uint8Array | null
 aegis256XEncryptDetached(msg, ad, key, nonce, tagLen?, degree?): { ciphertext, tag }
 aegis256XDecryptDetached(ciphertext, tag, ad, key, nonce, degree?): Uint8Array | null
+aegis256XEncryptDetachedInPlace(data, ad, key, nonce, tagLen?, degree?): Uint8Array
+aegis256XDecryptDetachedInPlace(data, tag, ad, key, nonce, degree?): boolean
 aegis256XMac(data, key, nonce?, tagLen?, degree?): Uint8Array
 aegis256XMacVerify(data, tag, key, nonce?, degree?): boolean
 
@@ -269,6 +317,10 @@ aegis128LBsDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
 // Detached (separate ciphertext and tag)
 aegis128LBsEncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis128LBsDecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
+
+// In-place (modifies data buffer directly)
+aegis128LBsEncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
+aegis128LBsDecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
 
 // MAC (nonce is optional, defaults to zero)
 aegis128LBsMac(data, key, nonce?, tagLen?): Uint8Array
@@ -293,6 +345,10 @@ aegis256BsDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
 // Detached (separate ciphertext and tag)
 aegis256BsEncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis256BsDecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
+
+// In-place (modifies data buffer directly)
+aegis256BsEncryptDetachedInPlace(data, ad, key, nonce, tagLen?): Uint8Array
+aegis256BsDecryptDetachedInPlace(data, tag, ad, key, nonce): boolean
 
 // MAC (nonce is optional, defaults to zero)
 aegis256BsMac(data, key, nonce?, tagLen?): Uint8Array

@@ -3,8 +3,10 @@ import {
 	AEGIS_128L_BS_NONCE_SIZE,
 	aegis128LBsDecrypt,
 	aegis128LBsDecryptDetached,
+	aegis128LBsDecryptDetachedInPlace,
 	aegis128LBsEncrypt,
 	aegis128LBsEncryptDetached,
+	aegis128LBsEncryptDetachedInPlace,
 	aegis128LBsMac,
 	aegis128LBsMacVerify,
 } from "../src/aegis128l-bs.ts";
@@ -346,5 +348,65 @@ describe("AEGISMAC-128L Bitsliced", () => {
 		const tag = hexToBytes("d3f09b2842ad301687d6902c921d7819");
 
 		expect(aegis128LBsMacVerify(data, tag, key, nonce)).toBe(false);
+	});
+});
+
+describe("AEGIS-128L-BS In-Place Encryption/Decryption", () => {
+	test("In-place encrypt produces same ciphertext as regular encrypt", () => {
+		const key = hexToBytes("10010000000000000000000000000000");
+		const nonce = hexToBytes("10000200000000000000000000000000");
+		const ad = hexToBytes("0001020304050607");
+		const msg = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+
+		const { ciphertext: expected, tag: expectedTag } =
+			aegis128LBsEncryptDetached(msg, ad, key, nonce, 16);
+
+		const data = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+		const tag = aegis128LBsEncryptDetachedInPlace(data, ad, key, nonce, 16);
+
+		expect(bytesToHex(data)).toBe(bytesToHex(expected));
+		expect(bytesToHex(tag)).toBe(bytesToHex(expectedTag));
+	});
+
+	test("In-place roundtrip", () => {
+		const key = hexToBytes("10010000000000000000000000000000");
+		const nonce = hexToBytes("10000200000000000000000000000000");
+		const ad = hexToBytes("0001020304050607");
+		const originalMsg = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+
+		const data = new Uint8Array(originalMsg);
+		const tag = aegis128LBsEncryptDetachedInPlace(data, ad, key, nonce, 16);
+
+		const result = aegis128LBsDecryptDetachedInPlace(data, tag, ad, key, nonce);
+		expect(result).toBe(true);
+		expect(bytesToHex(data)).toBe(bytesToHex(originalMsg));
+	});
+
+	test("In-place decrypt fails with wrong tag", () => {
+		const key = hexToBytes("10010000000000000000000000000000");
+		const nonce = hexToBytes("10000200000000000000000000000000");
+		const ad = hexToBytes("0001020304050607");
+		const data = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+		aegis128LBsEncryptDetachedInPlace(data, ad, key, nonce, 16);
+
+		const wrongTag = new Uint8Array(16);
+		const result = aegis128LBsDecryptDetachedInPlace(
+			data,
+			wrongTag,
+			ad,
+			key,
+			nonce,
+		);
+
+		expect(result).toBe(false);
+		expect(data.every((b) => b === 0)).toBe(true);
 	});
 });

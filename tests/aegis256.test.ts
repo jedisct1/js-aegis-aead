@@ -4,8 +4,10 @@ import {
 	Aegis256State,
 	aegis256Decrypt,
 	aegis256DecryptDetached,
+	aegis256DecryptDetachedInPlace,
 	aegis256Encrypt,
 	aegis256EncryptDetached,
+	aegis256EncryptDetachedInPlace,
 	aegis256Mac,
 	aegis256MacVerify,
 } from "../src/aegis256.ts";
@@ -445,5 +447,97 @@ describe("AEGISMAC-256", () => {
 		const tag = hexToBytes("c08e20cfc56f27195a46c9cef5c162d5");
 
 		expect(aegis256MacVerify(data, tag, key, nonce)).toBe(false);
+	});
+});
+
+describe("AEGIS-256 In-Place Encryption/Decryption", () => {
+	test("In-place encrypt produces same ciphertext as regular encrypt", () => {
+		const key = hexToBytes(
+			"1001000000000000000000000000000000000000000000000000000000000000",
+		);
+		const nonce = hexToBytes(
+			"1000020000000000000000000000000000000000000000000000000000000000",
+		);
+		const ad = hexToBytes("0001020304050607");
+		const msg = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+
+		const { ciphertext: expected, tag: expectedTag } = aegis256EncryptDetached(
+			msg,
+			ad,
+			key,
+			nonce,
+			16,
+		);
+
+		const data = hexToBytes(
+			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		);
+		const tag = aegis256EncryptDetachedInPlace(data, ad, key, nonce, 16);
+
+		expect(bytesToHex(data)).toBe(bytesToHex(expected));
+		expect(bytesToHex(tag)).toBe(bytesToHex(expectedTag));
+	});
+
+	test("In-place decrypt produces same plaintext as regular decrypt", () => {
+		const key = hexToBytes(
+			"1001000000000000000000000000000000000000000000000000000000000000",
+		);
+		const nonce = hexToBytes(
+			"1000020000000000000000000000000000000000000000000000000000000000",
+		);
+		const ad = hexToBytes("0001020304050607");
+		const ct = hexToBytes(
+			"f373079ed84b2709faee373584585d60accd191db310ef5d8b11833df9dec711",
+		);
+		const tag = hexToBytes("8d86f91ee606e9ff26a01b64ccbdd91d");
+
+		const expected = aegis256DecryptDetached(ct, tag, ad, key, nonce);
+
+		const data = hexToBytes(
+			"f373079ed84b2709faee373584585d60accd191db310ef5d8b11833df9dec711",
+		);
+		const result = aegis256DecryptDetachedInPlace(data, tag, ad, key, nonce);
+
+		expect(result).toBe(true);
+		expect(bytesToHex(data)).toBe(bytesToHex(expected!));
+	});
+
+	test("In-place roundtrip with partial block", () => {
+		const key = hexToBytes(
+			"1001000000000000000000000000000000000000000000000000000000000000",
+		);
+		const nonce = hexToBytes(
+			"1000020000000000000000000000000000000000000000000000000000000000",
+		);
+		const ad = hexToBytes("0001020304050607");
+		const originalMsg = hexToBytes("000102030405060708090a0b0c0d");
+
+		const data = new Uint8Array(originalMsg);
+		const tag = aegis256EncryptDetachedInPlace(data, ad, key, nonce, 16);
+
+		const result = aegis256DecryptDetachedInPlace(data, tag, ad, key, nonce);
+		expect(result).toBe(true);
+		expect(bytesToHex(data)).toBe(bytesToHex(originalMsg));
+	});
+
+	test("In-place decrypt fails with wrong tag", () => {
+		const key = hexToBytes(
+			"1001000000000000000000000000000000000000000000000000000000000000",
+		);
+		const nonce = hexToBytes(
+			"1000020000000000000000000000000000000000000000000000000000000000",
+		);
+		const ad = hexToBytes("0001020304050607");
+		const data = hexToBytes(
+			"f373079ed84b2709faee373584585d60accd191db310ef5d8b11833df9dec711",
+		);
+		const tag = hexToBytes("8d86f91ee606e9ff26a01b64ccbdd91e");
+
+		const result = aegis256DecryptDetachedInPlace(data, tag, ad, key, nonce);
+
+		expect(result).toBe(false);
+		expect(data.every((b) => b === 0)).toBe(true);
 	});
 });
