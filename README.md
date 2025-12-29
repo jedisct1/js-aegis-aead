@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/aegis-aead)](https://www.npmjs.com/package/aegis-aead)
 [![CI](https://github.com/jedisct1/js-aegis-aead/actions/workflows/ci.yml/badge.svg)](https://github.com/jedisct1/js-aegis-aead/actions/workflows/ci.yml)
 
-A compare, zero-dependencies JavaScript/TypeScript implementation of [AEGIS](https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/), a new family of secure, high-performance authenticated encryption algorithms.
+A compact, zero-dependency JavaScript/TypeScript implementation of [AEGIS](https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/), a family of fast, secure authenticated encryption algorithms.
 
 AEGIS provides both encryption with authentication and standalone MAC functionality, with a simple API that makes it hard to misuse.
 
@@ -83,12 +83,25 @@ const valid = aegis128LMacVerify(data, tag, key);
 
 ## Algorithms
 
-| Algorithm  | Key Size | Nonce Size | Block Size | Use Case                           |
-| ---------- | -------- | ---------- | ---------- | ---------------------------------- |
-| AEGIS-128L | 16 bytes | 16 bytes   | 32 bytes   | High throughput on 64-bit CPUs     |
-| AEGIS-256  | 32 bytes | 32 bytes   | 16 bytes   | 256-bit security level             |
-| AEGIS-128X | 16 bytes | 16 bytes   | 32×D bytes | Multi-lane AEGIS-128L (D = degree) |
-| AEGIS-256X | 32 bytes | 32 bytes   | 16×D bytes | Multi-lane AEGIS-256 (D = degree)  |
+| Algorithm     | Key Size | Nonce Size | Block Size | Use Case                           |
+| ------------- | -------- | ---------- | ---------- | ---------------------------------- |
+| AEGIS-128L    | 16 bytes | 16 bytes   | 32 bytes   | High throughput on 64-bit CPUs     |
+| AEGIS-256     | 32 bytes | 32 bytes   | 16 bytes   | 256-bit security level             |
+| AEGIS-128X    | 16 bytes | 16 bytes   | 32×D bytes | Multi-lane AEGIS-128L (D = degree) |
+| AEGIS-256X    | 32 bytes | 32 bytes   | 16×D bytes | Multi-lane AEGIS-256 (D = degree)  |
+| AEGIS-128L-BS | 16 bytes | 16 bytes   | 32 bytes   | Bitsliced, constant-time           |
+| AEGIS-256-BS  | 32 bytes | 32 bytes   | 16 bytes   | Bitsliced, constant-time           |
+
+### Bitsliced Variants
+
+The `-BS` (bitsliced) variants provide protection against cache-timing side-channel attacks at the cost of ~20% performance overhead. They process AES operations without lookup tables, making execution time independent of the key and data values.
+
+Use the bitsliced variants when:
+- Adversaries may be able to observe timing information (shared hosting, cloud VMs)
+- The key holder may encrypt or decrypt attacker-controlled data
+- Maximum side-channel resistance is required
+
+For most use cases, the standard implementations are safe since AEGIS's continuous state mixing makes practical timing attacks extremely difficult.
 
 ### Random Nonces
 
@@ -240,6 +253,54 @@ aegis256XMacVerify(data, tag, key, nonce?, degree?): boolean
 // Constants
 AEGIS_256X_KEY_SIZE   // 32
 AEGIS_256X_NONCE_SIZE // 32
+```
+
+### AEGIS-128L-BS (Bitsliced)
+
+```typescript
+// Key/Nonce generation
+aegis128LBsCreateKey(): Uint8Array   // 16 random bytes
+aegis128LBsCreateNonce(): Uint8Array // 16 random bytes
+
+// Combined (nonce || ciphertext || tag)
+aegis128LBsEncrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
+aegis128LBsDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
+
+// Detached (separate ciphertext and tag)
+aegis128LBsEncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
+aegis128LBsDecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
+
+// MAC (nonce is optional, defaults to zero)
+aegis128LBsMac(data, key, nonce?, tagLen?): Uint8Array
+aegis128LBsMacVerify(data, tag, key, nonce?): boolean
+
+// Constants
+AEGIS_128L_BS_KEY_SIZE   // 16
+AEGIS_128L_BS_NONCE_SIZE // 16
+```
+
+### AEGIS-256-BS (Bitsliced)
+
+```typescript
+// Key/Nonce generation
+aegis256BsCreateKey(): Uint8Array   // 32 random bytes
+aegis256BsCreateNonce(): Uint8Array // 32 random bytes
+
+// Combined (nonce || ciphertext || tag)
+aegis256BsEncrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
+aegis256BsDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
+
+// Detached (separate ciphertext and tag)
+aegis256BsEncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
+aegis256BsDecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
+
+// MAC (nonce is optional, defaults to zero)
+aegis256BsMac(data, key, nonce?, tagLen?): Uint8Array
+aegis256BsMacVerify(data, tag, key, nonce?): boolean
+
+// Constants
+AEGIS_256_BS_KEY_SIZE   // 32
+AEGIS_256_BS_NONCE_SIZE // 32
 ```
 
 ## Browser Example
