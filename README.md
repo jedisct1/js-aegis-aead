@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/aegis-aead)](https://www.npmjs.com/package/aegis-aead)
 [![CI](https://github.com/jedisct1/js-aegis-aead/actions/workflows/ci.yml/badge.svg)](https://github.com/jedisct1/js-aegis-aead/actions/workflows/ci.yml)
 
-A pure, zero-dependencies JavaScript/TypeScript implementation of [AEGIS](https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/), a new family of secure, high-performance authenticated encryption algorithms.
+A compare, zero-dependencies JavaScript/TypeScript implementation of [AEGIS](https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/), a new family of secure, high-performance authenticated encryption algorithms.
 
 AEGIS provides both encryption with authentication and standalone MAC functionality, with a simple API that makes it hard to misuse.
 
@@ -100,6 +100,7 @@ When using random nonces (the default for combined-mode functions):
 ### Tag Lengths
 
 All algorithms support two tag lengths:
+
 - 16 bytes (128-bit) - default
 - 32 bytes (256-bit) - pass `32` as the last parameter to encrypt/MAC functions
 
@@ -266,7 +267,3 @@ The key/nonce generation functions use the Web Crypto API (`globalThis.crypto.ge
 This library follows the [AEGIS IETF draft specification](https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/) and can exchange encrypted messages with any compliant implementation, including native libraries in C, Rust, Go, Zig, and more.
 
 See the [full list of AEGIS implementations](https://github.com/cfrg/draft-irtf-cfrg-aegis-aead?tab=readme-ov-file#known-implementations).
-
-## License
-
-MIT
