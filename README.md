@@ -22,18 +22,17 @@ npm install aegis-aead
 ```typescript
 import {
   aegis128LCreateKey,
-  aegis128LCreateNonce,
   aegis128LEncrypt,
   aegis128LDecrypt
 } from "aegis-aead";
 
-const key = aegis128LCreateKey();     // 16 random bytes
-const nonce = aegis128LCreateNonce(); // 16 random bytes
+const key = aegis128LCreateKey(); // 16 random bytes
 const message = new TextEncoder().encode("Hello, world!");
 const associatedData = new TextEncoder().encode("metadata");
 
-// Encrypt - returns ciphertext || tag || nonce
-const sealed = aegis128LEncrypt(message, associatedData, key, nonce);
+// Encrypt - returns nonce || ciphertext || tag
+// A random nonce is generated automatically
+const sealed = aegis128LEncrypt(message, associatedData, key);
 
 // Decrypt (returns null if authentication fails)
 const decrypted = aegis128LDecrypt(sealed, associatedData, key);
@@ -68,20 +67,18 @@ const decrypted = aegis128LDecryptDetached(ciphertext, tag, associatedData, key,
 ```typescript
 import {
   aegis128LCreateKey,
-  aegis128LCreateNonce,
   aegis128LMac,
   aegis128LMacVerify
 } from "aegis-aead";
 
 const key = aegis128LCreateKey();
-const nonce = aegis128LCreateNonce();
 const data = new TextEncoder().encode("data to authenticate");
 
-// Generate MAC
-const tag = aegis128LMac(data, key, nonce);
+// Generate MAC (nonce defaults to zero if not provided)
+const tag = aegis128LMac(data, key);
 
 // Verify MAC
-const valid = aegis128LMacVerify(data, tag, key, nonce);
+const valid = aegis128LMacVerify(data, tag, key);
 ```
 
 ## Algorithms
@@ -108,17 +105,17 @@ All algorithms support two tag lengths:
 aegis128LCreateKey(): Uint8Array   // 16 random bytes
 aegis128LCreateNonce(): Uint8Array // 16 random bytes
 
-// Combined (ciphertext || tag || nonce)
-aegis128LEncrypt(msg, ad, key, nonce, tagLen?): Uint8Array
+// Combined (nonce || ciphertext || tag)
+aegis128LEncrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
 aegis128LDecrypt(sealed, ad, key, tagLen?): Uint8Array | null
 
 // Detached (separate ciphertext and tag)
 aegis128LEncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis128LDecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 
-// MAC
-aegis128LMac(data, key, nonce, tagLen?): Uint8Array
-aegis128LMacVerify(data, tag, key, nonce): boolean
+// MAC (nonce is optional, defaults to zero)
+aegis128LMac(data, key, nonce?, tagLen?): Uint8Array
+aegis128LMacVerify(data, tag, key, nonce?): boolean
 
 // Constants
 AEGIS_128L_KEY_SIZE   // 16
@@ -132,17 +129,17 @@ AEGIS_128L_NONCE_SIZE // 16
 aegis256CreateKey(): Uint8Array   // 32 random bytes
 aegis256CreateNonce(): Uint8Array // 32 random bytes
 
-// Combined (ciphertext || tag || nonce)
-aegis256Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
+// Combined (nonce || ciphertext || tag)
+aegis256Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
 aegis256Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
 
 // Detached (separate ciphertext and tag)
 aegis256EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis256DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 
-// MAC
-aegis256Mac(data, key, nonce, tagLen?): Uint8Array
-aegis256MacVerify(data, tag, key, nonce): boolean
+// MAC (nonce is optional, defaults to zero)
+aegis256Mac(data, key, nonce?, tagLen?): Uint8Array
+aegis256MacVerify(data, tag, key, nonce?): boolean
 
 // Constants
 AEGIS_256_KEY_SIZE   // 32
@@ -162,10 +159,10 @@ aegis128X2CreateNonce(): Uint8Array
 aegis128X4CreateKey(): Uint8Array  // alias
 aegis128X4CreateNonce(): Uint8Array
 
-// Combined (ciphertext || tag || nonce)
-aegis128X2Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
+// Combined (nonce || ciphertext || tag)
+aegis128X2Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
 aegis128X2Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
-aegis128X4Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
+aegis128X4Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
 aegis128X4Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
 
 // Detached (separate ciphertext and tag)
@@ -174,17 +171,19 @@ aegis128X2DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 aegis128X4EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis128X4DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 
-// MAC
-aegis128X2Mac(data, key, nonce, tagLen?): Uint8Array
-aegis128X2MacVerify(data, tag, key, nonce): boolean
-aegis128X4Mac(data, key, nonce, tagLen?): Uint8Array
-aegis128X4MacVerify(data, tag, key, nonce): boolean
+// MAC (nonce is optional, defaults to zero)
+aegis128X2Mac(data, key, nonce?, tagLen?): Uint8Array
+aegis128X2MacVerify(data, tag, key, nonce?): boolean
+aegis128X4Mac(data, key, nonce?, tagLen?): Uint8Array
+aegis128X4MacVerify(data, tag, key, nonce?): boolean
 
 // Custom degree
-aegis128XEncrypt(msg, ad, key, nonce, tagLen?, degree?): Uint8Array
+aegis128XEncrypt(msg, ad, key, nonce?, tagLen?, degree?): Uint8Array
 aegis128XDecrypt(sealed, ad, key, tagLen?, degree?): Uint8Array | null
 aegis128XEncryptDetached(msg, ad, key, nonce, tagLen?, degree?): { ciphertext, tag }
 aegis128XDecryptDetached(ciphertext, tag, ad, key, nonce, degree?): Uint8Array | null
+aegis128XMac(data, key, nonce?, tagLen?, degree?): Uint8Array
+aegis128XMacVerify(data, tag, key, nonce?, degree?): boolean
 
 // Constants
 AEGIS_128X_KEY_SIZE   // 16
@@ -204,10 +203,10 @@ aegis256X2CreateNonce(): Uint8Array
 aegis256X4CreateKey(): Uint8Array  // alias
 aegis256X4CreateNonce(): Uint8Array
 
-// Combined (ciphertext || tag || nonce)
-aegis256X2Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
+// Combined (nonce || ciphertext || tag)
+aegis256X2Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
 aegis256X2Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
-aegis256X4Encrypt(msg, ad, key, nonce, tagLen?): Uint8Array
+aegis256X4Encrypt(msg, ad, key, nonce?, tagLen?): Uint8Array
 aegis256X4Decrypt(sealed, ad, key, tagLen?): Uint8Array | null
 
 // Detached (separate ciphertext and tag)
@@ -216,17 +215,19 @@ aegis256X2DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 aegis256X4EncryptDetached(msg, ad, key, nonce, tagLen?): { ciphertext, tag }
 aegis256X4DecryptDetached(ciphertext, tag, ad, key, nonce): Uint8Array | null
 
-// MAC
-aegis256X2Mac(data, key, nonce, tagLen?): Uint8Array
-aegis256X2MacVerify(data, tag, key, nonce): boolean
-aegis256X4Mac(data, key, nonce, tagLen?): Uint8Array
-aegis256X4MacVerify(data, tag, key, nonce): boolean
+// MAC (nonce is optional, defaults to zero)
+aegis256X2Mac(data, key, nonce?, tagLen?): Uint8Array
+aegis256X2MacVerify(data, tag, key, nonce?): boolean
+aegis256X4Mac(data, key, nonce?, tagLen?): Uint8Array
+aegis256X4MacVerify(data, tag, key, nonce?): boolean
 
 // Custom degree
-aegis256XEncrypt(msg, ad, key, nonce, tagLen?, degree?): Uint8Array
+aegis256XEncrypt(msg, ad, key, nonce?, tagLen?, degree?): Uint8Array
 aegis256XDecrypt(sealed, ad, key, tagLen?, degree?): Uint8Array | null
 aegis256XEncryptDetached(msg, ad, key, nonce, tagLen?, degree?): { ciphertext, tag }
 aegis256XDecryptDetached(ciphertext, tag, ad, key, nonce, degree?): Uint8Array | null
+aegis256XMac(data, key, nonce?, tagLen?, degree?): Uint8Array
+aegis256XMacVerify(data, tag, key, nonce?, degree?): boolean
 
 // Constants
 AEGIS_256X_KEY_SIZE   // 32
@@ -249,15 +250,9 @@ The example demonstrates encryption/decryption with a simple UI where you can en
 The key/nonce generation functions use the Web Crypto API (`globalThis.crypto.getRandomValues`) which is available in:
 
 - All modern browsers
-- Node.js 19+
+- Node.js 18+
 - Deno
 - Bun
-
-For older Node.js versions (< 19), add this polyfill before using the library:
-
-```javascript
-globalThis.crypto = require('crypto').webcrypto;
-```
 
 ## License
 
