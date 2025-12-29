@@ -3,6 +3,8 @@
 [![npm](https://img.shields.io/npm/v/aegis-aead)](https://www.npmjs.com/package/aegis-aead)
 [![CI](https://github.com/jedisct1/js-aegis-aead/actions/workflows/ci.yml/badge.svg)](https://github.com/jedisct1/js-aegis-aead/actions/workflows/ci.yml)
 
+[View on npm](https://www.npmjs.com/package/aegis-aead)
+
 A compact, zero-dependency JavaScript/TypeScript implementation of [AEGIS](https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/), a family of fast, secure authenticated encryption algorithms.
 
 AEGIS provides both encryption with authentication and standalone MAC functionality, with a simple API that makes it hard to misuse.
