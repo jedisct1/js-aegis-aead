@@ -1,7 +1,9 @@
 import {
+	aegis128LBsEncrypt,
 	aegis128LEncrypt,
 	aegis128X2Encrypt,
 	aegis128X4Encrypt,
+	aegis256BsEncrypt,
 	aegis256Encrypt,
 	aegis256X2Encrypt,
 	aegis256X4Encrypt,
@@ -65,8 +67,16 @@ const variants = [
 		fn: (msg: Uint8Array) => aegis128LEncrypt(msg, ad, key16, nonce16),
 	},
 	{
+		name: "AEGIS-128L-BS",
+		fn: (msg: Uint8Array) => aegis128LBsEncrypt(msg, ad, key16, nonce16),
+	},
+	{
 		name: "AEGIS-256",
 		fn: (msg: Uint8Array) => aegis256Encrypt(msg, ad, key32, nonce32),
+	},
+	{
+		name: "AEGIS-256-BS",
+		fn: (msg: Uint8Array) => aegis256BsEncrypt(msg, ad, key32, nonce32),
 	},
 	{
 		name: "AEGIS-128X2",
