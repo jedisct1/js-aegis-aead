@@ -11,6 +11,19 @@ export {
 	aegis128LMacVerify,
 } from "./aegis128l.js";
 export {
+	AEGIS_128L_BS_KEY_SIZE,
+	AEGIS_128L_BS_NONCE_SIZE,
+	Aegis128LBsState,
+	aegis128LBsCreateKey,
+	aegis128LBsCreateNonce,
+	aegis128LBsDecrypt,
+	aegis128LBsDecryptDetached,
+	aegis128LBsEncrypt,
+	aegis128LBsEncryptDetached,
+	aegis128LBsMac,
+	aegis128LBsMacVerify,
+} from "./aegis128l-bs.js";
+export {
 	AEGIS_128X_KEY_SIZE,
 	AEGIS_128X_NONCE_SIZE,
 	aegis128X2CreateKey,
@@ -51,6 +64,19 @@ export {
 	aegis256MacVerify,
 } from "./aegis256.js";
 export {
+	AEGIS_256_BS_KEY_SIZE,
+	AEGIS_256_BS_NONCE_SIZE,
+	Aegis256BsState,
+	aegis256BsCreateKey,
+	aegis256BsCreateNonce,
+	aegis256BsDecrypt,
+	aegis256BsDecryptDetached,
+	aegis256BsEncrypt,
+	aegis256BsEncryptDetached,
+	aegis256BsMac,
+	aegis256BsMacVerify,
+} from "./aegis256-bs.js";
+export {
 	AEGIS_256X_KEY_SIZE,
 	AEGIS_256X_NONCE_SIZE,
 	aegis256X2CreateKey,
@@ -78,29 +104,3 @@ export {
 	aegis256XMac,
 	aegis256XMacVerify,
 } from "./aegis256x.js";
-export {
-	AEGIS_128L_BS_KEY_SIZE,
-	AEGIS_128L_BS_NONCE_SIZE,
-	aegis128LBsCreateKey,
-	aegis128LBsCreateNonce,
-	aegis128LBsDecrypt,
-	aegis128LBsDecryptDetached,
-	aegis128LBsEncrypt,
-	aegis128LBsEncryptDetached,
-	aegis128LBsMac,
-	aegis128LBsMacVerify,
-	Aegis128LBsState,
-} from "./aegis128l-bs.js";
-export {
-	AEGIS_256_BS_KEY_SIZE,
-	AEGIS_256_BS_NONCE_SIZE,
-	aegis256BsCreateKey,
-	aegis256BsCreateNonce,
-	aegis256BsDecrypt,
-	aegis256BsDecryptDetached,
-	aegis256BsEncrypt,
-	aegis256BsEncryptDetached,
-	aegis256BsMac,
-	aegis256BsMacVerify,
-	Aegis256BsState,
-} from "./aegis256-bs.js";
