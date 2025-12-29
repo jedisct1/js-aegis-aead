@@ -90,6 +90,13 @@ const valid = aegis128LMacVerify(data, tag, key);
 | AEGIS-128X | 16 bytes | 16 bytes   | 32×D bytes | Multi-lane AEGIS-128L (D = degree) |
 | AEGIS-256X | 32 bytes | 32 bytes   | 16×D bytes | Multi-lane AEGIS-256 (D = degree)  |
 
+### Random Nonces
+
+When using random nonces (the default for combined-mode functions):
+
+- AEGIS-128L/128X: Safe for up to 2^48 messages per key, regardless of their size
+- AEGIS-256/256X: No practical limits on the number of messages per key
+
 ### Tag Lengths
 
 All algorithms support two tag lengths:
