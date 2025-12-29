@@ -89,8 +89,8 @@ const valid = aegis128LMacVerify(data, tag, key);
 | AEGIS-256     | 32 bytes | 32 bytes   | 16 bytes   | 256-bit security level             |
 | AEGIS-128X    | 16 bytes | 16 bytes   | 32×D bytes | Multi-lane AEGIS-128L (D = degree) |
 | AEGIS-256X    | 32 bytes | 32 bytes   | 16×D bytes | Multi-lane AEGIS-256 (D = degree)  |
-| AEGIS-128L-BS | 16 bytes | 16 bytes   | 32 bytes   | Bitsliced, constant-time           |
-| AEGIS-256-BS  | 32 bytes | 32 bytes   | 16 bytes   | Bitsliced, constant-time           |
+| AEGIS-128L-BS | 16 bytes | 16 bytes   | 32 bytes   | Bitsliced                          |
+| AEGIS-256-BS  | 32 bytes | 32 bytes   | 16 bytes   | Bitsliced                          |
 
 ### Bitsliced Variants
 
