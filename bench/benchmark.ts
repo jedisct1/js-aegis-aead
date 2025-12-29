@@ -1,3 +1,4 @@
+import { gcm } from "@noble/ciphers/aes.js";
 import {
 	aegis128LBsEncrypt,
 	aegis128LBsEncryptDetachedInPlace,
@@ -60,16 +61,26 @@ function benchmark(
 
 const key16 = new Uint8Array(16);
 const key32 = new Uint8Array(32);
+const nonce12 = new Uint8Array(12);
 const nonce16 = new Uint8Array(16);
 const nonce32 = new Uint8Array(32);
 const ad = new Uint8Array(0);
 
 crypto.getRandomValues(key16);
 crypto.getRandomValues(key32);
+crypto.getRandomValues(nonce12);
 crypto.getRandomValues(nonce16);
 crypto.getRandomValues(nonce32);
 
 const variants = [
+	{
+		name: "AES-128-GCM",
+		fn: (msg: Uint8Array) => gcm(key16, nonce12, ad).encrypt(msg),
+	},
+	{
+		name: "AES-256-GCM",
+		fn: (msg: Uint8Array) => gcm(key32, nonce12, ad).encrypt(msg),
+	},
 	{
 		name: "AEGIS-128L",
 		fn: (msg: Uint8Array) => aegis128LEncrypt(msg, ad, key16, nonce16),
@@ -144,7 +155,7 @@ const variants = [
 	},
 ];
 
-console.log("AEGIS Benchmark\n");
+console.log("AEGIS Benchmark (with @noble/ciphers AES-GCM baseline)\n");
 console.log("=".repeat(70));
 
 for (const size of SIZES) {
@@ -154,7 +165,7 @@ for (const size of SIZES) {
 	console.log(`\nMessage size: ${formatSize(size)}`);
 	console.log("-".repeat(70));
 	console.log(
-		`${"Algorithm".padEnd(20)} ${"ops/sec".padStart(15)} ${"throughput".padStart(15)}`,
+		`${"Algorithm".padEnd(25)} ${"ops/sec".padStart(15)} ${"throughput".padStart(15)}`,
 	);
 	console.log("-".repeat(70));
 
@@ -165,7 +176,7 @@ for (const size of SIZES) {
 			size,
 		);
 		console.log(
-			`${variant.name.padEnd(20)} ${opsPerSec.toFixed(0).padStart(15)} ${formatThroughput(throughput).padStart(15)}`,
+			`${variant.name.padEnd(25)} ${opsPerSec.toFixed(0).padStart(15)} ${formatThroughput(throughput).padStart(15)}`,
 		);
 	}
 }
