@@ -1,4 +1,4 @@
-# aegis-aead
+# AEGIS for JavaScript
 
 [![npm](https://img.shields.io/npm/v/aegis-aead)](https://www.npmjs.com/package/aegis-aead)
 [![CI](https://github.com/jedisct1/js-aegis-aead/actions/workflows/ci.yml/badge.svg)](https://github.com/jedisct1/js-aegis-aead/actions/workflows/ci.yml)
@@ -11,7 +11,7 @@ AEGIS provides both encryption with authentication and standalone MAC functional
 
 ## Table of Contents
 
-- [aegis-aead](#aegis-aead)
+- [AEGIS for JavaScript](#aegis-for-javascript)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
   - [Quick Start](#quick-start)
