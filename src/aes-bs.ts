@@ -52,115 +52,116 @@ function rotl32(x: number, b: number): number {
 	return ((x << b) | (x >>> (32 - b))) >>> 0;
 }
 
-/**
- * S-box implementation using bitsliced logic gates.
- * Maximov & Ekdahl circuit.
- */
 function sbox(st: Uint32Array, offset: number): void {
-	let u0 = st[offset]!;
-	let u1 = st[offset + 1]!;
-	let u2 = st[offset + 2]!;
-	let u3 = st[offset + 3]!;
-	let u4 = st[offset + 4]!;
-	let u5 = st[offset + 5]!;
-	let u6 = st[offset + 6]!;
-	let u7 = st[offset + 7]!;
+	const u0 = st[offset]!;
+	const u1 = st[offset + 1]!;
+	const u2 = st[offset + 2]!;
+	const u3 = st[offset + 3]!;
+	const u4 = st[offset + 4]!;
+	const u5 = st[offset + 5]!;
+	const u6 = st[offset + 6]!;
+	const u7 = st[offset + 7]!;
 
-	const z24 = (u3 ^ u4) >>> 0;
-	const q17 = (u1 ^ u7) >>> 0;
-	const q16 = (u5 ^ q17) >>> 0;
-	const q0 = (z24 ^ q16) >>> 0;
-	const q7 = (z24 ^ u1 ^ u6) >>> 0;
-	const q2 = (u2 ^ q0) >>> 0;
-	const q1 = (q7 ^ q2) >>> 0;
-	const q3 = (u0 ^ q7) >>> 0;
-	const q4 = (u0 ^ q2) >>> 0;
-	const q5 = (u1 ^ q4) >>> 0;
-	const q6 = (u2 ^ u3) >>> 0;
-	const q10 = (q6 ^ q7) >>> 0;
-	const q8 = (u0 ^ q10) >>> 0;
-	const q9 = (q8 ^ q2) >>> 0;
-	const q12 = (z24 ^ q17) >>> 0;
-	const q15 = (u7 ^ q4) >>> 0;
-	const q13 = (z24 ^ q15) >>> 0;
-	const q14 = (q15 ^ q0) >>> 0;
+	const z24 = u3 ^ u4;
+	const q17 = u1 ^ u7;
+	const q16 = u5 ^ q17;
+	const q0 = z24 ^ q16;
+	const q7 = z24 ^ u1 ^ u6;
+	const q2 = u2 ^ q0;
+	const q1 = q7 ^ q2;
+	const q3 = u0 ^ q7;
+	const q4 = u0 ^ q2;
+	const q5 = u1 ^ q4;
+	const q6 = u2 ^ u3;
+	const q10 = q6 ^ q7;
+	const q8 = u0 ^ q10;
+	const q9 = q8 ^ q2;
+	const q12 = z24 ^ q17;
+	const q15 = u7 ^ q4;
+	const m02 = u0 ^ u2;
+	const m15 = u1 ^ u5;
+	const q13 = m02 ^ m15;
+	const q14 = m02 ^ u7;
 	const q11 = u5;
 
-	// NAND(x, y) = ~(x & y)
-	// NOR(x, y) = ~(x | y)
-	// XNOR(x, y) = ~(x ^ y)
-	// MUX(s, x, y) = (x & s) | (y & ~s)
-	const nand = (x: number, y: number) => ~(x & y) >>> 0;
-	const nor = (x: number, y: number) => ~(x | y) >>> 0;
-	const xnor = (x: number, y: number) => ~(x ^ y) >>> 0;
-	const mux = (s: number, x: number, y: number) =>
-		(((x & s) >>> 0) | ((y & ~s) >>> 0)) >>> 0;
+	const t20 = q6 & q12;
+	const t21 = q3 & q14;
+	const t22 = q1 & q16;
+	const t23 = q2 & q17;
+	const x0 = (q3 | q14) ^ (q0 & q7) ^ (t20 ^ t22);
+	const x1 = (q4 | q13) ^ (q10 & q11) ^ (t21 ^ t20);
+	const x2 = (q2 | q17) ^ (q5 & q9) ^ (t21 ^ t22);
+	const x3 = (q8 | q15) ^ t23 ^ (t21 ^ (q4 & q13));
 
-	const t20 = nand(q6, q12);
-	const t21 = nand(q3, q14);
-	const t22 = nand(q1, q16);
-	const x0 = (nor(q3, q14) ^ nand(q0, q7) ^ (t20 ^ t22)) >>> 0;
-	const x1 = (nor(q4, q13) ^ nand(q10, q11) ^ (t21 ^ t20)) >>> 0;
-	const x2 = (nor(q2, q17) ^ nand(q5, q9) ^ (t21 ^ t22)) >>> 0;
-	const x3 = (nor(q8, q15) ^ nand(q2, q17) ^ (t21 ^ nand(q4, q13))) >>> 0;
+	const a = x1 & ~x3;
+	const b = x0 & ~x3;
+	const c = x3 & ~x1;
+	const d = x2 & ~x1;
+	const e = x0 ^ a;
+	const y0 = x3 ^ (x2 & ~e);
+	const f = x1 ^ b;
+	const y1 = c ^ (x2 & f);
+	const g = x2 ^ c;
+	const y2 = x1 ^ (x0 & ~g);
+	const h = x3 ^ d;
+	const y3 = a ^ (x0 & h);
+	const y02 = y2 ^ y0;
+	const y13 = y3 ^ y1;
+	const y23 = y3 ^ y2;
+	const y01 = y1 ^ y0;
+	const y00 = y02 ^ y13;
 
-	const t2 = xnor(nand(x0, x2), nor(x1, x3));
-	const y0 = mux(x2, t2, x3);
-	const y2 = mux(x0, t2, x1);
-	const y1 = mux(t2, x3, mux(x1, x2, 0xffffffff));
-	const y3 = mux(t2, x1, mux(x3, x0, 0xffffffff));
-	const y02 = (y2 ^ y0) >>> 0;
-	const y13 = (y3 ^ y1) >>> 0;
-	const y23 = (y3 ^ y2) >>> 0;
-	const y01 = (y1 ^ y0) >>> 0;
-	const y00 = (y02 ^ y13) >>> 0;
+	const a0 = y01 & q11;
+	const a1 = y0 & q12;
+	const a2 = y1 & q0;
+	const a3 = y23 & q17;
+	const a4 = y2 & q5;
+	const a5 = y3 & q15;
+	const a6 = y13 & q14;
+	const a7 = y00 & q16;
+	const a8 = y02 & q13;
+	const a9 = y01 & q7;
+	const a10 = y0 & q10;
+	const a11 = y1 & q6;
+	const a12 = y23 & q2;
+	const a13 = y2 & q9;
+	const a14 = y3 & q8;
+	const a15 = y13 & q3;
+	const a16 = y00 & q1;
+	const a17 = y02 & q4;
 
-	const n0 = nand(y01, q11);
-	const n1 = nand(y0, q12);
-	const n2 = nand(y1, q0);
-	const n3 = nand(y23, q17);
-	const n4 = nand(y2, q5);
-	const n5 = nand(y3, q15);
-	const n6 = nand(y13, q14);
-	const n7 = nand(y00, q16);
-	const n8 = nand(y02, q13);
-	const n9 = nand(y01, q7);
-	const n10 = nand(y0, q10);
-	const n11 = nand(y1, q6);
-	const n12 = nand(y23, q2);
-	const n13 = nand(y2, q9);
-	const n14 = nand(y3, q8);
-	const n15 = nand(y13, q3);
-	const n16 = nand(y00, q1);
-	const n17 = nand(y02, q4);
-
-	const h1 = (n4 ^ n1 ^ n5) >>> 0;
-	u2 = xnor(n2, h1);
-	const h2 = (n9 ^ n15) >>> 0;
-	u6 = xnor(h2, (n11 ^ n17) >>> 0);
-	const h4 = (n11 ^ n14) >>> 0;
-	const h5 = (n9 ^ n12) >>> 0;
-	u5 = (h4 ^ h5) >>> 0;
-	const h7 = (u2 ^ u6) >>> 0;
-	const h8 = (n10 ^ h7) >>> 0;
-	u7 = xnor((n16 ^ h2) >>> 0, h8);
-	const h9 = (n8 ^ h1) >>> 0;
-	const h10 = (n13 ^ h8) >>> 0;
-	u3 = (h5 ^ h10) >>> 0;
-	const h13 = (h4 ^ n7 ^ h9 ^ h10) >>> 0;
-	u4 = (n1 ^ h13) >>> 0;
-	const h14 = xnor(n0, u7);
-	u1 = xnor(n6, (h7 ^ h9 ^ h14) >>> 0);
-	u0 = (h13 ^ n3 ^ n4 ^ h14) >>> 0;
-
-	st[offset] = u0;
-	st[offset + 1] = u1;
-	st[offset + 2] = u2;
-	st[offset + 3] = u3;
-	st[offset + 4] = u4;
-	st[offset + 5] = u5;
-	st[offset + 6] = u6;
-	st[offset + 7] = u7;
+	const r0 = a1 ^ a5;
+	const r1 = a9 ^ a15;
+	const r2 = a4 ^ r0;
+	const r3 = a2 ^ a10;
+	const r4 = a11 ^ a17;
+	const r5 = a8 ^ r1;
+	const r6 = a0 ^ a16;
+	const r7 = a7 ^ a13;
+	const r8 = a11 ^ a14;
+	const r9 = r3 ^ r4;
+	const r10 = r5 ^ r6;
+	const r11 = r2 ^ r9;
+	const r12 = a3 ^ r0;
+	const r13 = r7 ^ r8;
+	const r14 = r12 ^ r13;
+	st[offset] = r10 ^ r14;
+	const r15 = a6 ^ a10;
+	const r16 = r15 ^ r2;
+	st[offset + 1] = ~(r10 ^ r16);
+	st[offset + 2] = ~(a2 ^ r2);
+	const r17 = a12 ^ a13;
+	const r18 = a15 ^ r17;
+	st[offset + 3] = r18 ^ r11;
+	const r19 = a1 ^ a14;
+	const r20 = a17 ^ r3;
+	const r21 = r7 ^ r19;
+	const r22 = r5 ^ r20;
+	st[offset + 4] = r21 ^ r22;
+	const r23 = a9 ^ a12;
+	st[offset + 5] = r8 ^ r23;
+	st[offset + 6] = ~(r1 ^ r4);
+	st[offset + 7] = ~(a16 ^ r11);
 }
 
 /**
@@ -388,6 +389,76 @@ export function pack04(st: AesBlocks): void {
 }
 
 /**
+ * Inverse of pack04: unpack only blocks 0 and 4.
+ */
+export function unpack04(st: AesBlocks): void {
+	for (let i = 0; i < 32; i += 8) {
+		swapmove(st, i + 7, i + 3, 0x0f0f0f0f, 4);
+		swapmove(st, i + 6, i + 2, 0x0f0f0f0f, 4);
+		swapmove(st, i + 5, i + 1, 0x0f0f0f0f, 4);
+		swapmove(st, i + 4, i, 0x0f0f0f0f, 4);
+		swapmove(st, i + 7, i + 5, 0x33333333, 2);
+		swapmove(st, i + 6, i + 4, 0x33333333, 2);
+		swapmove(st, i + 3, i + 1, 0x33333333, 2);
+		swapmove(st, i + 2, i, 0x33333333, 2);
+		swapmove(st, i + 5, i + 4, 0x55555555, 1);
+		swapmove(st, i + 1, i, 0x55555555, 1);
+	}
+
+	swapmove(st, 12, 12 + 16, 0x0000ffff, 16);
+	swapmove(st, 8, 8 + 16, 0x0000ffff, 16);
+	swapmove(st, 4, 4 + 16, 0x0000ffff, 16);
+	swapmove(st, 0, 0 + 16, 0x0000ffff, 16);
+
+	swapmove(st, 4 + 16, 4 + 24, 0x00ff00ff, 8);
+	swapmove(st, 4, 4 + 8, 0x00ff00ff, 8);
+	swapmove(st, 0 + 16, 0 + 24, 0x00ff00ff, 8);
+	swapmove(st, 0, 0 + 8, 0x00ff00ff, 8);
+}
+
+/**
+ * Pack only block 0 (used for constant inputs in AEGIS-256).
+ */
+export function pack04_6(st: AesBlocks): void {
+	swapmove(st, 0, 0 + 8, 0x00ff00ff, 8);
+	swapmove(st, 0 + 16, 0 + 24, 0x00ff00ff, 8);
+
+	swapmove(st, 0, 0 + 16, 0x0000ffff, 16);
+	swapmove(st, 8, 8 + 16, 0x0000ffff, 16);
+
+	for (let i = 0; i < 32; i += 8) {
+		swapmove(st, i + 1, i, 0x55555555, 1);
+		swapmove(st, i + 2, i, 0x33333333, 2);
+		swapmove(st, i + 3, i + 1, 0x33333333, 2);
+		swapmove(st, i + 4, i, 0x0f0f0f0f, 4);
+		swapmove(st, i + 5, i + 1, 0x0f0f0f0f, 4);
+		swapmove(st, i + 6, i + 2, 0x0f0f0f0f, 4);
+		swapmove(st, i + 7, i + 3, 0x0f0f0f0f, 4);
+	}
+}
+
+/**
+ * Inverse of pack04_6: unpack only block 0.
+ */
+export function unpack04_6(st: AesBlocks): void {
+	for (let i = 0; i < 32; i += 8) {
+		swapmove(st, i + 7, i + 3, 0x0f0f0f0f, 4);
+		swapmove(st, i + 6, i + 2, 0x0f0f0f0f, 4);
+		swapmove(st, i + 5, i + 1, 0x0f0f0f0f, 4);
+		swapmove(st, i + 4, i, 0x0f0f0f0f, 4);
+		swapmove(st, i + 3, i + 1, 0x33333333, 2);
+		swapmove(st, i + 2, i, 0x33333333, 2);
+		swapmove(st, i + 1, i, 0x55555555, 1);
+	}
+
+	swapmove(st, 8, 8 + 16, 0x0000ffff, 16);
+	swapmove(st, 0, 0 + 16, 0x0000ffff, 16);
+
+	swapmove(st, 0 + 16, 0 + 24, 0x00ff00ff, 8);
+	swapmove(st, 0, 0 + 8, 0x00ff00ff, 8);
+}
+
+/**
  * Computes the index into the bitsliced state array.
  * @param block - Block index (0-7)
  * @param word - Word index (0-3)
@@ -404,6 +475,16 @@ export function blocksRotr(st: AesBlocks): void {
 	for (let i = 0; i < 32; i++) {
 		st[i] =
 			(((st[i]! & 0xfefefefe) >>> 1) | ((st[i]! & 0x01010101) << 7)) >>> 0;
+	}
+}
+
+/**
+ * Rotate within the bottom 6 lanes (for AEGIS-256, 6 blocks).
+ */
+export function blocksRotr6(st: AesBlocks): void {
+	for (let i = 0; i < 32; i++) {
+		st[i] =
+			(((st[i]! & 0xf8f8f8f8) >>> 1) | ((st[i]! & 0x04040404) << 5)) >>> 0;
 	}
 }
 

@@ -19,6 +19,7 @@ import {
 	pack,
 	pack04,
 	unpack,
+	unpack04,
 	wordIdx,
 } from "./aes-bs.js";
 import { randomBytes } from "./random.js";
@@ -34,11 +35,13 @@ const C1: AesBlock = new Uint32Array([
 
 /**
  * Bitsliced AEGIS-128L cipher state.
- * Uses 8 AES blocks (128 bytes) stored in bitsliced form (32 uint32 words).
+ * The state is kept in packed bitsliced form between operations so that
+ * pack/unpack does not need to be applied at every round.
  */
 export class Aegis128LBsState {
 	private st: AesBlocks;
 	private st1: AesBlocks;
+	private constantInput: AesBlocks;
 	private tmp0: AesBlock;
 	private tmp1: AesBlock;
 	private z0: AesBlock;
@@ -47,38 +50,14 @@ export class Aegis128LBsState {
 	constructor() {
 		this.st = createAesBlocks();
 		this.st1 = createAesBlocks();
+		this.constantInput = createAesBlocks();
 		this.tmp0 = createAesBlock();
 		this.tmp1 = createAesBlock();
 		this.z0 = createAesBlock();
 		this.z1 = createAesBlock();
 	}
 
-	/**
-	 * AEGIS round function: applies AES round to all blocks and rotates.
-	 * st[i] = AES(st[i]) ^ st[(i-1) mod 8]
-	 */
-	private aegisRound(): void {
-		const st = this.st;
-		const st1 = this.st1;
-
-		st1.set(st);
-		pack(st1);
-		aesRound(st1);
-		unpack(st1);
-
-		for (let i = 0; i < 8; i++) {
-			const prev = (i + 7) % 8;
-			st[wordIdx(i, 0)] = (st[wordIdx(i, 0)]! ^ st1[wordIdx(prev, 0)]!) >>> 0;
-			st[wordIdx(i, 1)] = (st[wordIdx(i, 1)]! ^ st1[wordIdx(prev, 1)]!) >>> 0;
-			st[wordIdx(i, 2)] = (st[wordIdx(i, 2)]! ^ st1[wordIdx(prev, 2)]!) >>> 0;
-			st[wordIdx(i, 3)] = (st[wordIdx(i, 3)]! ^ st1[wordIdx(prev, 3)]!) >>> 0;
-		}
-	}
-
-	/**
-	 * AEGIS round function with constant input (used in packed mode).
-	 */
-	private aegisRoundPacked(constantInput: AesBlocks): void {
+	private aegisRoundPacked(): void {
 		const st = this.st;
 		const st1 = this.st1;
 
@@ -86,13 +65,11 @@ export class Aegis128LBsState {
 		aesRound(st1);
 		blocksRotr(st1);
 		blocksXor(st, st1);
-		blocksXor(st, constantInput);
+		blocksXor(st, this.constantInput);
 	}
 
-	/**
-	 * Pack constant input for blocks 0 and 4.
-	 */
-	private packConstantInput(out: AesBlocks, m0: AesBlock, m1: AesBlock): void {
+	private packConstantInput(m0: AesBlock, m1: AesBlock): void {
+		const out = this.constantInput;
 		out.fill(0);
 		blocksPut(out, m0, 0);
 		blocksPut(out, m1, 4);
@@ -100,27 +77,35 @@ export class Aegis128LBsState {
 	}
 
 	/**
-	 * Absorb rate: XOR message blocks into state positions 0 and 4.
+	 * Extract the keystream blocks z0 and z1 directly from the packed state.
+	 *
+	 *   z0 = S6 ^ S1 ^ (S2 & S3)
+	 *   z1 = S2 ^ S5 ^ (S6 & S7)
+	 *
+	 * The formula is evaluated lane-wise on the packed state, the result is
+	 * placed in positions 0 (z0) and 4 (z1), then unpack04 extracts the two
+	 * AES blocks.
 	 */
-	private absorbRate(m0: AesBlock, m1: AesBlock): void {
+	private keystreamPacked(): void {
 		const st = this.st;
-		st[wordIdx(0, 0)] = (st[wordIdx(0, 0)]! ^ m0[0]!) >>> 0;
-		st[wordIdx(0, 1)] = (st[wordIdx(0, 1)]! ^ m0[1]!) >>> 0;
-		st[wordIdx(0, 2)] = (st[wordIdx(0, 2)]! ^ m0[2]!) >>> 0;
-		st[wordIdx(0, 3)] = (st[wordIdx(0, 3)]! ^ m0[3]!) >>> 0;
-
-		st[wordIdx(4, 0)] = (st[wordIdx(4, 0)]! ^ m1[0]!) >>> 0;
-		st[wordIdx(4, 1)] = (st[wordIdx(4, 1)]! ^ m1[1]!) >>> 0;
-		st[wordIdx(4, 2)] = (st[wordIdx(4, 2)]! ^ m1[2]!) >>> 0;
-		st[wordIdx(4, 3)] = (st[wordIdx(4, 3)]! ^ m1[3]!) >>> 0;
-	}
-
-	/**
-	 * Update state with two message blocks.
-	 */
-	private update(m0: AesBlock, m1: AesBlock): void {
-		this.aegisRound();
-		this.absorbRate(m0, m1);
+		const z = this.st1;
+		for (let i = 0; i < 32; i++) {
+			const x = st[i]!;
+			z[i] =
+				((x & 0x02020202) << 6) ^
+				((x & 0x40404040) << 1) ^
+				((x & (x >>> 1) & 0x10101010) << 3) ^
+				((x & 0x20202020) >>> 2) ^
+				((x & 0x04040404) << 1) ^
+				((x & (x >>> 1) & 0x01010101) << 3);
+		}
+		unpack04(z);
+		const z0 = this.z0;
+		const z1 = this.z1;
+		for (let i = 0; i < 4; i++) {
+			z0[i] = z[wordIdx(0, i)]!;
+			z1[i] = z[wordIdx(4, i)]!;
+		}
 	}
 
 	/**
@@ -150,13 +135,11 @@ export class Aegis128LBsState {
 		blocksPut(this.st, kc1, 6);
 		blocksPut(this.st, kc0, 7);
 
-		const constantInput = createAesBlocks();
-		this.packConstantInput(constantInput, n, k);
+		this.packConstantInput(n, k);
 		pack(this.st);
 		for (let i = 0; i < 10; i++) {
-			this.aegisRoundPacked(constantInput);
+			this.aegisRoundPacked();
 		}
-		unpack(this.st);
 	}
 
 	/**
@@ -168,7 +151,8 @@ export class Aegis128LBsState {
 		const msg1 = this.tmp1;
 		blockFromBytes(msg0, ai.subarray(0, 16));
 		blockFromBytes(msg1, ai.subarray(16, 32));
-		this.update(msg0, msg1);
+		this.packConstantInput(msg0, msg1);
+		this.aegisRoundPacked();
 	}
 
 	/**
@@ -177,39 +161,22 @@ export class Aegis128LBsState {
 	 * @param out - 32-byte output buffer
 	 */
 	encTo(xi: Uint8Array, out: Uint8Array): void {
-		const st = this.st;
-		const z0 = this.z0;
-		const z1 = this.z1;
 		const t0 = this.tmp0;
 		const t1 = this.tmp1;
 
-		for (let i = 0; i < 4; i++) {
-			z0[i] =
-				(st[wordIdx(6, i)]! ^
-					st[wordIdx(1, i)]! ^
-					(st[wordIdx(2, i)]! & st[wordIdx(3, i)]!)) >>>
-				0;
-		}
-		for (let i = 0; i < 4; i++) {
-			z1[i] =
-				(st[wordIdx(2, i)]! ^
-					st[wordIdx(5, i)]! ^
-					(st[wordIdx(6, i)]! & st[wordIdx(7, i)]!)) >>>
-				0;
-		}
+		this.keystreamPacked();
 
 		blockFromBytes(t0, xi.subarray(0, 16));
 		blockFromBytes(t1, xi.subarray(16, 32));
 
-		const out0 = createAesBlock();
-		const out1 = createAesBlock();
-		blockXor(out0, t0, z0);
-		blockXor(out1, t1, z1);
+		this.packConstantInput(t0, t1);
+		this.aegisRoundPacked();
 
-		blockToBytes(out.subarray(0, 16), out0);
-		blockToBytes(out.subarray(16, 32), out1);
+		blockXor(t0, t0, this.z0);
+		blockXor(t1, t1, this.z1);
 
-		this.update(t0, t1);
+		blockToBytes(out.subarray(0, 16), t0);
+		blockToBytes(out.subarray(16, 32), t1);
 	}
 
 	/**
@@ -229,31 +196,18 @@ export class Aegis128LBsState {
 	 * @param out - 32-byte output buffer
 	 */
 	decTo(ci: Uint8Array, out: Uint8Array): void {
-		const st = this.st;
 		const msg0 = this.tmp0;
 		const msg1 = this.tmp1;
 
 		blockFromBytes(msg0, ci.subarray(0, 16));
 		blockFromBytes(msg1, ci.subarray(16, 32));
 
-		for (let i = 0; i < 4; i++) {
-			msg0[i] =
-				(msg0[i]! ^
-					st[wordIdx(6, i)]! ^
-					st[wordIdx(1, i)]! ^
-					(st[wordIdx(2, i)]! & st[wordIdx(3, i)]!)) >>>
-				0;
-		}
-		for (let i = 0; i < 4; i++) {
-			msg1[i] =
-				(msg1[i]! ^
-					st[wordIdx(2, i)]! ^
-					st[wordIdx(5, i)]! ^
-					(st[wordIdx(6, i)]! & st[wordIdx(7, i)]!)) >>>
-				0;
-		}
+		this.keystreamPacked();
+		blockXor(msg0, msg0, this.z0);
+		blockXor(msg1, msg1, this.z1);
 
-		this.update(msg0, msg1);
+		this.packConstantInput(msg0, msg1);
+		this.aegisRoundPacked();
 
 		blockToBytes(out.subarray(0, 16), msg0);
 		blockToBytes(out.subarray(16, 32), msg1);
@@ -270,18 +224,10 @@ export class Aegis128LBsState {
 		return out;
 	}
 
-	/**
-	 * Encrypts a 32-byte plaintext block in-place.
-	 * @param block - 32-byte buffer (plaintext in, ciphertext out)
-	 */
 	encInPlace(block: Uint8Array): void {
 		this.encTo(block, block);
 	}
 
-	/**
-	 * Decrypts a 32-byte ciphertext block in-place.
-	 * @param block - 32-byte buffer (ciphertext in, plaintext out)
-	 */
 	decInPlace(block: Uint8Array): void {
 		this.decTo(block, block);
 	}
@@ -292,7 +238,6 @@ export class Aegis128LBsState {
 	 * @returns Decrypted plaintext of the same length
 	 */
 	decPartial(cn: Uint8Array): Uint8Array {
-		const st = this.st;
 		const msg0 = this.tmp0;
 		const msg1 = this.tmp1;
 
@@ -300,22 +245,9 @@ export class Aegis128LBsState {
 		blockFromBytes(msg0, padded.subarray(0, 16));
 		blockFromBytes(msg1, padded.subarray(16, 32));
 
-		for (let i = 0; i < 4; i++) {
-			msg0[i] =
-				(msg0[i]! ^
-					st[wordIdx(6, i)]! ^
-					st[wordIdx(1, i)]! ^
-					(st[wordIdx(2, i)]! & st[wordIdx(3, i)]!)) >>>
-				0;
-		}
-		for (let i = 0; i < 4; i++) {
-			msg1[i] =
-				(msg1[i]! ^
-					st[wordIdx(2, i)]! ^
-					st[wordIdx(5, i)]! ^
-					(st[wordIdx(6, i)]! & st[wordIdx(7, i)]!)) >>>
-				0;
-		}
+		this.keystreamPacked();
+		blockXor(msg0, msg0, this.z0);
+		blockXor(msg1, msg1, this.z1);
 
 		const pad = new Uint8Array(RATE);
 		blockToBytes(pad.subarray(0, 16), msg0);
@@ -327,8 +259,8 @@ export class Aegis128LBsState {
 		blockFromBytes(msg0, pad.subarray(0, 16));
 		blockFromBytes(msg1, pad.subarray(16, 32));
 
-		this.aegisRound();
-		this.absorbRate(msg0, msg1);
+		this.packConstantInput(msg0, msg1);
+		this.aegisRoundPacked();
 
 		return xn;
 	}
@@ -349,18 +281,20 @@ export class Aegis128LBsState {
 		tmp[2] = ((msgLen * 8) & 0xffffffff) >>> 0;
 		tmp[3] = Math.floor((msgLen * 8) / 0x100000000) >>> 0;
 
-		tmp[0] = (tmp[0]! ^ st[wordIdx(2, 0)]!) >>> 0;
-		tmp[1] = (tmp[1]! ^ st[wordIdx(2, 1)]!) >>> 0;
-		tmp[2] = (tmp[2]! ^ st[wordIdx(2, 2)]!) >>> 0;
-		tmp[3] = (tmp[3]! ^ st[wordIdx(2, 3)]!) >>> 0;
+		const unpacked = this.st1;
+		unpacked.set(st);
+		unpack(unpacked);
 
-		const constantInput = createAesBlocks();
-		this.packConstantInput(constantInput, tmp, tmp);
-		pack(this.st);
+		tmp[0] = (tmp[0]! ^ unpacked[wordIdx(2, 0)]!) >>> 0;
+		tmp[1] = (tmp[1]! ^ unpacked[wordIdx(2, 1)]!) >>> 0;
+		tmp[2] = (tmp[2]! ^ unpacked[wordIdx(2, 2)]!) >>> 0;
+		tmp[3] = (tmp[3]! ^ unpacked[wordIdx(2, 3)]!) >>> 0;
+
+		this.packConstantInput(tmp, tmp);
 		for (let i = 0; i < 7; i++) {
-			this.aegisRoundPacked(constantInput);
+			this.aegisRoundPacked();
 		}
-		unpack(this.st);
+		unpack(st);
 
 		if (tagLen === 16) {
 			const tag = new Uint8Array(16);
@@ -495,13 +429,6 @@ export function aegis128LBsDecryptDetached(
 
 /**
  * Encrypts a message in-place using bitsliced AEGIS-128L (detached mode).
- * The input buffer is modified to contain the ciphertext.
- * @param data - Buffer containing plaintext (will be overwritten with ciphertext)
- * @param ad - Associated data (authenticated but not encrypted)
- * @param key - 16-byte encryption key
- * @param nonce - 16-byte nonce (must be unique per message with the same key)
- * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
- * @returns Authentication tag
  */
 export function aegis128LBsEncryptDetachedInPlace(
 	data: Uint8Array,
@@ -537,13 +464,6 @@ export function aegis128LBsEncryptDetachedInPlace(
 
 /**
  * Decrypts a message in-place using bitsliced AEGIS-128L (detached mode).
- * The input buffer is modified to contain the plaintext (or zeroed on failure).
- * @param data - Buffer containing ciphertext (will be overwritten with plaintext)
- * @param tag - Authentication tag (16 or 32 bytes)
- * @param ad - Associated data (must match what was used during encryption)
- * @param key - 16-byte encryption key
- * @param nonce - 16-byte nonce (must match what was used during encryption)
- * @returns True if authentication succeeds, false otherwise
  */
 export function aegis128LBsDecryptDetachedInPlace(
 	data: Uint8Array,
@@ -590,12 +510,6 @@ export const AEGIS_128L_BS_KEY_SIZE = 16;
 /**
  * Encrypts a message using bitsliced AEGIS-128L.
  * Returns a single buffer containing nonce || ciphertext || tag.
- * @param msg - Plaintext message
- * @param ad - Associated data (authenticated but not encrypted)
- * @param key - 16-byte encryption key
- * @param nonce - 16-byte nonce (optional, generates random nonce if not provided)
- * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
- * @returns Concatenated nonce || ciphertext || tag
  */
 export function aegis128LBsEncrypt(
 	msg: Uint8Array,
@@ -626,11 +540,6 @@ export function aegis128LBsEncrypt(
 /**
  * Decrypts a message using bitsliced AEGIS-128L.
  * Expects input as nonce || ciphertext || tag.
- * @param sealed - Concatenated nonce || ciphertext || tag
- * @param ad - Associated data (must match what was used during encryption)
- * @param key - 16-byte encryption key
- * @param tagLen - Authentication tag length: 16 or 32 bytes (default: 16)
- * @returns Decrypted plaintext, or null if authentication fails
  */
 export function aegis128LBsDecrypt(
 	sealed: Uint8Array,
@@ -649,12 +558,7 @@ export function aegis128LBsDecrypt(
 }
 
 /**
- * Computes a MAC (Message Authentication Code) using bitsliced AEGIS-128L.
- * @param data - Data to authenticate
- * @param key - 16-byte key
- * @param nonce - 16-byte nonce (optional, uses zero nonce if null)
- * @param tagLen - Tag length: 16 or 32 bytes (default: 16)
- * @returns Authentication tag
+ * Computes a MAC using bitsliced AEGIS-128L.
  */
 export function aegis128LBsMac(
 	data: Uint8Array,
@@ -675,11 +579,6 @@ export function aegis128LBsMac(
 
 /**
  * Verifies a MAC computed using bitsliced AEGIS-128L.
- * @param data - Data to verify
- * @param tag - Expected authentication tag (16 or 32 bytes)
- * @param key - 16-byte key
- * @param nonce - 16-byte nonce (optional, uses zero nonce if null)
- * @returns True if the tag is valid, false otherwise
  */
 export function aegis128LBsMacVerify(
 	data: Uint8Array,
@@ -692,18 +591,10 @@ export function aegis128LBsMacVerify(
 	return constantTimeEqual(tag, expectedTag);
 }
 
-/**
- * Generates a random 16-byte key for bitsliced AEGIS-128L.
- * @returns 16-byte encryption key
- */
 export function aegis128LBsCreateKey(): Uint8Array {
 	return randomBytes(AEGIS_128L_BS_KEY_SIZE);
 }
 
-/**
- * Generates a random 16-byte nonce for bitsliced AEGIS-128L.
- * @returns 16-byte nonce
- */
 export function aegis128LBsCreateNonce(): Uint8Array {
 	return randomBytes(AEGIS_128L_BS_NONCE_SIZE);
 }
