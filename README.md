@@ -16,6 +16,7 @@ AEGIS provides both encryption with authentication and standalone MAC functional
   - [Installation](#installation)
   - [Quick Start](#quick-start)
   - [Choosing an Algorithm](#choosing-an-algorithm)
+  - [Performance](#performance)
   - [Usage Examples](#usage-examples)
     - [Combined Mode](#combined-mode)
     - [Detached Mode](#detached-mode)
@@ -73,6 +74,20 @@ Recommendations:
 - Interoperability: AEGIS-128X/256X when exchanging data with native implementations using these variants
 
 Note: The X variants are designed for SIMD parallelism in native code. In JavaScript they offer no speed benefit but are provided for interoperability.
+
+## Performance
+
+The numbers below come from `bun run bench` on an Apple M5 Max, with AES-GCM and ChaCha20-Poly1305 supplied by @noble/ciphers for comparison. Throughput is for combined-mode encryption with empty associated data; your mileage will vary with hardware and runtime.
+
+| Algorithm         |    64 B |     1 KB |    16 KB |     1 MB |
+| ----------------- | ------: | -------: | -------: | -------: |
+| AEGIS-128L        | 50 MB/s | 224 MB/s | 310 MB/s | 324 MB/s |
+| ChaCha20-Poly1305 | 36 MB/s | 175 MB/s | 248 MB/s | 256 MB/s |
+| AEGIS-256         | 36 MB/s | 146 MB/s | 198 MB/s | 204 MB/s |
+| AES-128-GCM       | 13 MB/s |  74 MB/s | 150 MB/s | 182 MB/s |
+| AES-256-GCM       | 12 MB/s |  66 MB/s | 122 MB/s | 143 MB/s |
+
+AEGIS-128L is the fastest option at every message size, reaching about 324 MB/s on large buffers — roughly 1.3x ChaCha20-Poly1305 and 1.8x AES-128-GCM.
 
 ## Usage Examples
 
