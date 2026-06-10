@@ -223,7 +223,7 @@ const sealed = aegis128LEncrypt(msg, ad, key, undefined, 32);
 
 ### Bitsliced Variants
 
-The `-BS` variants use a constant-time bitsliced AES implementation that doesn't use lookup tables. This prevents cache-timing attacks at the cost of ~20% performance.
+The `-BS` variants use a constant-time bitsliced AES implementation that doesn't use lookup tables, which prevents cache-timing attacks. The bitsliced code processes all state blocks in a single fused round and is currently the fastest scalar implementation in this library, so the protection comes at no cost.
 
 Use bitsliced variants when:
 - Running on shared infrastructure (cloud VMs, containers)
