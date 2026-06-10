@@ -1,4 +1,5 @@
 import { gcm } from "@noble/ciphers/aes.js";
+import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
 import {
 	aegis128LEncrypt,
 	aegis128LEncryptDetachedInPlace,
@@ -77,6 +78,10 @@ const variants = [
 		fn: (msg: Uint8Array) => gcm(key32, nonce12, ad).encrypt(msg),
 	},
 	{
+		name: "ChaCha20-Poly1305",
+		fn: (msg: Uint8Array) => chacha20poly1305(key32, nonce12, ad).encrypt(msg),
+	},
+	{
 		name: "AEGIS-128L",
 		fn: (msg: Uint8Array) => aegis128LEncrypt(msg, ad, key16, nonce16),
 	},
@@ -84,15 +89,6 @@ const variants = [
 		name: "AEGIS-128L (in-place)",
 		fn: (msg: Uint8Array) =>
 			aegis128LEncryptDetachedInPlace(msg, ad, key16, nonce16),
-	},
-	{
-		name: "AEGIS-256",
-		fn: (msg: Uint8Array) => aegis256Encrypt(msg, ad, key32, nonce32),
-	},
-	{
-		name: "AEGIS-256 (in-place)",
-		fn: (msg: Uint8Array) =>
-			aegis256EncryptDetachedInPlace(msg, ad, key32, nonce32),
 	},
 	{
 		name: "AEGIS-128X2",
@@ -111,6 +107,15 @@ const variants = [
 		name: "AEGIS-128X4 (in-place)",
 		fn: (msg: Uint8Array) =>
 			aegis128X4EncryptDetachedInPlace(msg, ad, key16, nonce16),
+	},
+	{
+		name: "AEGIS-256",
+		fn: (msg: Uint8Array) => aegis256Encrypt(msg, ad, key32, nonce32),
+	},
+	{
+		name: "AEGIS-256 (in-place)",
+		fn: (msg: Uint8Array) =>
+			aegis256EncryptDetachedInPlace(msg, ad, key32, nonce32),
 	},
 	{
 		name: "AEGIS-256X2",
@@ -132,7 +137,9 @@ const variants = [
 	},
 ];
 
-console.log("AEGIS Benchmark (with @noble/ciphers AES-GCM baseline)\n");
+console.log(
+	"AEGIS Benchmark (with @noble/ciphers AES-GCM and ChaCha20-Poly1305 baselines)\n",
+);
 console.log("=".repeat(70));
 
 for (const size of SIZES) {
