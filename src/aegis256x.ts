@@ -1,29 +1,47 @@
+/**
+ * AEGIS-256X implementation with configurable parallelism degree.
+ * Extends AEGIS-256 with parallel lanes for improved performance on wide
+ * SIMD architectures. Each lane is an independent AEGIS-256 state kept in
+ * packed bitsliced form, built on the constant-time bitsliced AES core.
+ */
+
 import {
-	aesRoundTo,
-	andBlocksTo,
-	C0,
-	C1,
-	concatBytes,
-	constantTimeEqual,
-	le64,
-	xorBlocks,
-	xorBlocksTo,
-	zeroPad,
-} from "./aes.js";
+	type AesBlock,
+	type AesBlocks,
+	aegisRound256,
+	blockFromBytes,
+	blocksPut,
+	blockToBytes,
+	blockXor,
+	createAesBlock,
+	createAesBlocks,
+	keystream256,
+	pack,
+	packConstantInput256,
+	unpack,
+	wordIdx,
+} from "./aes-bs.js";
 import { randomBytes } from "./random.js";
+import { constantTimeEqual, zeroPad } from "./utils.js";
+
+const C0: AesBlock = new Uint32Array([
+	0x02010100, 0x0d080503, 0x59372215, 0x6279e990,
+]);
+const C1: AesBlock = new Uint32Array([
+	0x55183ddb, 0xf12fc26d, 0x42311120, 0xdd28b573,
+]);
 
 /**
  * AEGIS-256X cipher state with configurable parallelism degree.
- * Extends AEGIS-256 with parallel AES rounds for improved performance on wide SIMD architectures.
  */
 export class Aegis256XState {
-	private v: Uint8Array[][];
 	private d: number;
-	private rate: number;
-	private newV: Uint8Array[][];
-	private tmp: Uint8Array;
-	private z: Uint8Array;
-	private ctxBufs: Uint8Array[];
+	private rateBytes: number;
+	private lanes: AesBlocks[];
+	private ci: AesBlocks;
+	private ciZero: AesBlocks;
+	private tmp: AesBlock;
+	private z: AesBlock;
 
 	/**
 	 * Creates a new AEGIS-256X state.
@@ -31,21 +49,32 @@ export class Aegis256XState {
 	 */
 	constructor(degree: number = 2) {
 		this.d = degree;
-		this.rate = 128 * degree;
-		this.v = Array.from({ length: 6 }, () =>
-			Array.from({ length: degree }, () => new Uint8Array(16)),
-		);
-		this.newV = Array.from({ length: 6 }, () =>
-			Array.from({ length: degree }, () => new Uint8Array(16)),
-		);
-		this.tmp = new Uint8Array(16);
-		this.z = new Uint8Array(16 * degree);
-		this.ctxBufs = Array.from({ length: degree }, (_, i) => {
-			const buf = new Uint8Array(16);
-			buf[0] = i;
-			buf[1] = degree - 1;
-			return buf;
-		});
+		this.rateBytes = 16 * degree;
+		this.lanes = Array.from({ length: degree }, () => createAesBlocks());
+		this.ci = createAesBlocks();
+		this.ciZero = createAesBlocks();
+		this.tmp = createAesBlock();
+		this.z = createAesBlock();
+	}
+
+	/**
+	 * Returns the state blocks as byte arrays indexed [block][lane] (for testing).
+	 */
+	get v(): Uint8Array[][] {
+		const out: Uint8Array[][] = Array.from({ length: 6 }, () => []);
+		const unpacked = createAesBlocks();
+		const w = createAesBlock();
+		for (let i = 0; i < this.d; i++) {
+			unpacked.set(this.lanes[i]!);
+			unpack(unpacked);
+			for (let b = 0; b < 6; b++) {
+				for (let j = 0; j < 4; j++) w[j] = unpacked[wordIdx(b, j)]!;
+				const bytes = new Uint8Array(16);
+				blockToBytes(bytes, w);
+				out[b]!.push(bytes);
+			}
+		}
+		return out;
 	}
 
 	/**
@@ -54,132 +83,101 @@ export class Aegis256XState {
 	 * @param nonce - 32-byte nonce (must be unique per message)
 	 */
 	init(key: Uint8Array, nonce: Uint8Array): void {
-		const k0 = key.subarray(0, 16);
-		const k1 = key.subarray(16, 32);
-		const n0 = nonce.subarray(0, 16);
-		const n1 = nonce.subarray(16, 32);
+		const k0 = createAesBlock();
+		const k1 = createAesBlock();
+		const n0 = createAesBlock();
+		const n1 = createAesBlock();
+		const k0n0 = createAesBlock();
+		const k1n1 = createAesBlock();
+		const k0c0 = createAesBlock();
+		const k1c1 = createAesBlock();
 
-		const k0n0 = new Uint8Array(16);
-		const k1n1 = new Uint8Array(16);
-		const k0c0 = new Uint8Array(16);
-		const k1c1 = new Uint8Array(16);
-		xorBlocksTo(k0, n0, k0n0);
-		xorBlocksTo(k1, n1, k1n1);
-		xorBlocksTo(k0, C0, k0c0);
-		xorBlocksTo(k1, C1, k1c1);
+		blockFromBytes(k0, key);
+		blockFromBytes(k1, key, 16);
+		blockFromBytes(n0, nonce);
+		blockFromBytes(n1, nonce, 16);
+		blockXor(k0n0, k0, n0);
+		blockXor(k1n1, k1, n1);
+		blockXor(k0c0, k0, C0);
+		blockXor(k1c1, k1, C1);
 
+		const base = createAesBlocks();
+		blocksPut(base, k0n0, 0);
+		blocksPut(base, k1n1, 1);
+		blocksPut(base, C1, 2);
+		blocksPut(base, C0, 3);
+		blocksPut(base, k0c0, 4);
+		blocksPut(base, k1c1, 5);
+		pack(base);
+
+		const ciK0 = createAesBlocks();
+		const ciK1 = createAesBlocks();
+		const ciK0N0 = createAesBlocks();
+		const ciK1N1 = createAesBlocks();
+		packConstantInput256(ciK0, k0);
+		packConstantInput256(ciK1, k1);
+		packConstantInput256(ciK0N0, k0n0);
+		packConstantInput256(ciK1N1, k1n1);
+
+		const ctx = createAesBlock();
+		const deltas: AesBlocks[] = [];
 		for (let i = 0; i < this.d; i++) {
-			this.v[0]![i]!.set(k0n0);
-			this.v[1]![i]!.set(k1n1);
-			this.v[2]![i]!.set(C1);
-			this.v[3]![i]!.set(C0);
-			this.v[4]![i]!.set(k0c0);
-			this.v[5]![i]!.set(k1c1);
+			this.lanes[i]!.set(base);
+			const delta = createAesBlocks();
+			ctx[0] = i | ((this.d - 1) << 8);
+			blocksPut(delta, ctx, 3);
+			blocksPut(delta, ctx, 5);
+			pack(delta);
+			deltas.push(delta);
 		}
 
-		const k0V = new Uint8Array(16 * this.d);
-		const k1V = new Uint8Array(16 * this.d);
-		const k0n0V = new Uint8Array(16 * this.d);
-		const k1n1V = new Uint8Array(16 * this.d);
-
-		for (let i = 0; i < this.d; i++) {
-			k0V.set(k0, i * 16);
-			k1V.set(k1, i * 16);
-			k0n0V.set(k0n0, i * 16);
-			k1n1V.set(k1n1, i * 16);
-		}
-
+		const inputs = [ciK0, ciK1, ciK0N0, ciK1N1];
 		for (let round = 0; round < 4; round++) {
-			for (let i = 0; i < this.d; i++) {
-				const ctx = this.ctxBufs[i]!;
-				for (let j = 0; j < 16; j++) this.v[3]![i]![j] ^= ctx[j]!;
-				for (let j = 0; j < 16; j++) this.v[5]![i]![j] ^= ctx[j]!;
-			}
-			this.update(k0V);
-
-			for (let i = 0; i < this.d; i++) {
-				const ctx = this.ctxBufs[i]!;
-				for (let j = 0; j < 16; j++) this.v[3]![i]![j] ^= ctx[j]!;
-				for (let j = 0; j < 16; j++) this.v[5]![i]![j] ^= ctx[j]!;
-			}
-			this.update(k1V);
-
-			for (let i = 0; i < this.d; i++) {
-				const ctx = this.ctxBufs[i]!;
-				for (let j = 0; j < 16; j++) this.v[3]![i]![j] ^= ctx[j]!;
-				for (let j = 0; j < 16; j++) this.v[5]![i]![j] ^= ctx[j]!;
-			}
-			this.update(k0n0V);
-
-			for (let i = 0; i < this.d; i++) {
-				const ctx = this.ctxBufs[i]!;
-				for (let j = 0; j < 16; j++) this.v[3]![i]![j] ^= ctx[j]!;
-				for (let j = 0; j < 16; j++) this.v[5]![i]![j] ^= ctx[j]!;
-			}
-			this.update(k1n1V);
-		}
-	}
-
-	/**
-	 * Updates the state with a message vector.
-	 * @param m - Message vector (16*degree bytes)
-	 */
-	update(m: Uint8Array): void {
-		const newV = this.newV;
-		const tmp = this.tmp;
-
-		for (let i = 0; i < this.d; i++) {
-			const mi = m.subarray(i * 16, (i + 1) * 16);
-			xorBlocksTo(this.v[0]![i]!, mi, tmp);
-			aesRoundTo(this.v[5]![i]!, tmp, newV[0]![i]!);
-			aesRoundTo(this.v[0]![i]!, this.v[1]![i]!, newV[1]![i]!);
-			aesRoundTo(this.v[1]![i]!, this.v[2]![i]!, newV[2]![i]!);
-			aesRoundTo(this.v[2]![i]!, this.v[3]![i]!, newV[3]![i]!);
-			aesRoundTo(this.v[3]![i]!, this.v[4]![i]!, newV[4]![i]!);
-			aesRoundTo(this.v[4]![i]!, this.v[5]![i]!, newV[5]![i]!);
-		}
-
-		for (let j = 0; j < 6; j++) {
-			for (let i = 0; i < this.d; i++) {
-				this.v[j]![i]!.set(newV[j]![i]!);
+			for (const input of inputs) {
+				for (let i = 0; i < this.d; i++) {
+					const st = this.lanes[i]!;
+					const delta = deltas[i]!;
+					for (let w = 0; w < 32; w++) st[w] = st[w]! ^ delta[w]!;
+					aegisRound256(st, input);
+				}
 			}
 		}
 	}
 
 	/**
 	 * Absorbs an associated data block into the state.
-	 * @param ai - Associated data block (16*degree bytes)
+	 * @param ai - Buffer holding the 16*degree-byte associated data block
+	 * @param off - Offset of the block within the buffer
 	 */
-	absorb(ai: Uint8Array): void {
-		this.update(ai);
-	}
-
-	private computeZ(): void {
-		const z = this.z;
-		const tmp = this.tmp;
-
+	absorb(ai: Uint8Array, off = 0): void {
 		for (let i = 0; i < this.d; i++) {
-			const off = i * 16;
-			xorBlocksTo(this.v[1]![i]!, this.v[4]![i]!, z.subarray(off, off + 16));
-			for (let j = 0; j < 16; j++) z[off + j] ^= this.v[5]![i]![j]!;
-			andBlocksTo(this.v[2]![i]!, this.v[3]![i]!, tmp);
-			for (let j = 0; j < 16; j++) z[off + j] ^= tmp[j]!;
+			blockFromBytes(this.tmp, ai, off + i * 16);
+			packConstantInput256(this.ci, this.tmp);
+			aegisRound256(this.lanes[i]!, this.ci);
 		}
 	}
 
 	/**
 	 * Encrypts a plaintext block and writes to output buffer.
-	 * @param xi - Plaintext block (16*degree bytes)
-	 * @param out - Output buffer (16*degree bytes)
+	 * @param xi - Buffer holding the 16*degree-byte plaintext block
+	 * @param out - Output buffer receiving the ciphertext block
+	 * @param inOff - Offset of the plaintext block within xi
+	 * @param outOff - Offset of the ciphertext block within out
 	 */
-	encTo(xi: Uint8Array, out: Uint8Array): void {
-		this.computeZ();
-		const z = this.z;
-		const rateBytes = this.rate / 8;
+	encTo(xi: Uint8Array, out: Uint8Array, inOff = 0, outOff = 0): void {
+		const t = this.tmp;
 
-		this.update(xi);
+		for (let i = 0; i < this.d; i++) {
+			const st = this.lanes[i]!;
+			keystream256(st, this.z);
 
-		for (let i = 0; i < rateBytes; i++) out[i] = xi[i]! ^ z[i]!;
+			blockFromBytes(t, xi, inOff + i * 16);
+			packConstantInput256(this.ci, t);
+			aegisRound256(st, this.ci);
+
+			blockXor(t, t, this.z);
+			blockToBytes(out, t, outOff + i * 16);
+		}
 	}
 
 	/**
@@ -188,24 +186,33 @@ export class Aegis256XState {
 	 * @returns Ciphertext block of the same size
 	 */
 	enc(xi: Uint8Array): Uint8Array {
-		const rateBytes = this.rate / 8;
-		const out = new Uint8Array(rateBytes);
+		const out = new Uint8Array(this.rateBytes);
 		this.encTo(xi, out);
 		return out;
 	}
 
 	/**
 	 * Decrypts a ciphertext block and writes to output buffer.
-	 * @param ci - Ciphertext block (16*degree bytes)
-	 * @param out - Output buffer (16*degree bytes)
+	 * @param ci - Buffer holding the 16*degree-byte ciphertext block
+	 * @param out - Output buffer receiving the plaintext block
+	 * @param inOff - Offset of the ciphertext block within ci
+	 * @param outOff - Offset of the plaintext block within out
 	 */
-	decTo(ci: Uint8Array, out: Uint8Array): void {
-		this.computeZ();
-		const z = this.z;
-		const rateBytes = this.rate / 8;
+	decTo(ci: Uint8Array, out: Uint8Array, inOff = 0, outOff = 0): void {
+		const msg = this.tmp;
 
-		for (let i = 0; i < rateBytes; i++) out[i] = ci[i]! ^ z[i]!;
-		this.update(out);
+		for (let i = 0; i < this.d; i++) {
+			const st = this.lanes[i]!;
+
+			blockFromBytes(msg, ci, inOff + i * 16);
+			keystream256(st, this.z);
+			blockXor(msg, msg, this.z);
+
+			packConstantInput256(this.ci, msg);
+			aegisRound256(st, this.ci);
+
+			blockToBytes(out, msg, outOff + i * 16);
+		}
 	}
 
 	/**
@@ -214,24 +221,15 @@ export class Aegis256XState {
 	 * @returns Plaintext block of the same size
 	 */
 	dec(ci: Uint8Array): Uint8Array {
-		const rateBytes = this.rate / 8;
-		const out = new Uint8Array(rateBytes);
+		const out = new Uint8Array(this.rateBytes);
 		this.decTo(ci, out);
 		return out;
 	}
 
-	/**
-	 * Encrypts a plaintext block in-place.
-	 * @param block - Buffer (plaintext in, ciphertext out), size 16*degree bytes
-	 */
 	encInPlace(block: Uint8Array): void {
 		this.encTo(block, block);
 	}
 
-	/**
-	 * Decrypts a ciphertext block in-place.
-	 * @param block - Buffer (ciphertext in, plaintext out), size 16*degree bytes
-	 */
 	decInPlace(block: Uint8Array): void {
 		this.decTo(block, block);
 	}
@@ -242,135 +240,225 @@ export class Aegis256XState {
 	 * @returns Decrypted plaintext of the same length
 	 */
 	decPartial(cn: Uint8Array): Uint8Array {
-		this.computeZ();
-		const z = this.z;
+		const padded = zeroPad(cn, this.rateBytes);
+		const ks = new Uint8Array(this.rateBytes);
 
-		const rateBytes = this.rate / 8;
-		const t = zeroPad(cn, rateBytes);
-		const out = new Uint8Array(rateBytes);
-		for (let i = 0; i < rateBytes; i++) out[i] = t[i]! ^ z[i]!;
+		for (let i = 0; i < this.d; i++) {
+			keystream256(this.lanes[i]!, this.z);
+			blockToBytes(ks, this.z, i * 16);
+		}
+
+		const out = new Uint8Array(this.rateBytes);
+		for (let j = 0; j < this.rateBytes; j++) out[j] = padded[j]! ^ ks[j]!;
+
 		const xn = new Uint8Array(out.subarray(0, cn.length));
 
-		const v = zeroPad(xn, 16 * this.d);
-		this.update(v);
+		out.fill(0, cn.length);
+		for (let i = 0; i < this.d; i++) {
+			blockFromBytes(this.tmp, out, i * 16);
+			packConstantInput256(this.ci, this.tmp);
+			aegisRound256(this.lanes[i]!, this.ci);
+		}
 
 		return xn;
 	}
 
 	/**
 	 * Finalizes encryption/decryption and produces an authentication tag.
-	 * @param adLenBits - Associated data length in bits
-	 * @param msgLenBits - Message length in bits
+	 * @param adLen - Associated data length in bytes
+	 * @param msgLen - Message length in bytes
 	 * @param tagLen - Tag length (16 or 32 bytes)
 	 * @returns Authentication tag
 	 */
-	finalize(
-		adLenBits: bigint,
-		msgLenBits: bigint,
-		tagLen: 16 | 32 = 16,
-	): Uint8Array {
-		let t = new Uint8Array(0);
-		const u = concatBytes(le64(adLenBits), le64(msgLenBits));
+	finalize(adLen: number, msgLen: number, tagLen: 16 | 32 = 16): Uint8Array {
+		const u = createAesBlock();
+		const t = this.tmp;
 
+		u[0] = (adLen * 8) & 0xffffffff;
+		u[1] = Math.floor((adLen * 8) / 0x100000000);
+		u[2] = (msgLen * 8) & 0xffffffff;
+		u[3] = Math.floor((msgLen * 8) / 0x100000000);
+
+		const unpacked = createAesBlocks();
 		for (let i = 0; i < this.d; i++) {
-			t = concatBytes(t, xorBlocks(this.v[3]![i]!, u));
-		}
-
-		for (let round = 0; round < 7; round++) {
-			this.update(t);
+			const st = this.lanes[i]!;
+			unpacked.set(st);
+			unpack(unpacked);
+			for (let j = 0; j < 4; j++) t[j] = u[j]! ^ unpacked[wordIdx(3, j)]!;
+			packConstantInput256(this.ci, t);
+			for (let round = 0; round < 7; round++) {
+				aegisRound256(st, this.ci);
+			}
+			unpack(st);
 		}
 
 		if (tagLen === 16) {
-			let tag = new Uint8Array(16);
+			const tagBlock = createAesBlock();
 			for (let i = 0; i < this.d; i++) {
-				let ti = xorBlocks(this.v[0]![i]!, this.v[1]![i]!);
-				ti = xorBlocks(ti, this.v[2]![i]!);
-				ti = xorBlocks(ti, this.v[3]![i]!);
-				ti = xorBlocks(ti, this.v[4]![i]!);
-				ti = xorBlocks(ti, this.v[5]![i]!);
-				tag = xorBlocks(tag, ti);
+				const st = this.lanes[i]!;
+				for (let j = 0; j < 4; j++) {
+					tagBlock[j] =
+						tagBlock[j]! ^
+						st[wordIdx(0, j)]! ^
+						st[wordIdx(1, j)]! ^
+						st[wordIdx(2, j)]! ^
+						st[wordIdx(3, j)]! ^
+						st[wordIdx(4, j)]! ^
+						st[wordIdx(5, j)]!;
+				}
 			}
+			const tag = new Uint8Array(16);
+			blockToBytes(tag, tagBlock);
 			return tag;
 		} else {
-			let ti0 = new Uint8Array(16);
-			let ti1 = new Uint8Array(16);
+			const tagBlock0 = createAesBlock();
+			const tagBlock1 = createAesBlock();
 			for (let i = 0; i < this.d; i++) {
-				ti0 = xorBlocks(ti0, this.v[0]![i]!);
-				ti0 = xorBlocks(ti0, this.v[1]![i]!);
-				ti0 = xorBlocks(ti0, this.v[2]![i]!);
-				ti1 = xorBlocks(ti1, this.v[3]![i]!);
-				ti1 = xorBlocks(ti1, this.v[4]![i]!);
-				ti1 = xorBlocks(ti1, this.v[5]![i]!);
+				const st = this.lanes[i]!;
+				for (let j = 0; j < 4; j++) {
+					tagBlock0[j] =
+						tagBlock0[j]! ^
+						st[wordIdx(0, j)]! ^
+						st[wordIdx(1, j)]! ^
+						st[wordIdx(2, j)]!;
+					tagBlock1[j] =
+						tagBlock1[j]! ^
+						st[wordIdx(3, j)]! ^
+						st[wordIdx(4, j)]! ^
+						st[wordIdx(5, j)]!;
+				}
 			}
-			return concatBytes(ti0, ti1);
+			const tag = new Uint8Array(32);
+			blockToBytes(tag, tagBlock0);
+			blockToBytes(tag, tagBlock1, 16);
+			return tag;
 		}
 	}
 
 	/**
 	 * Finalizes MAC computation and produces an authentication tag.
 	 * Uses a different finalization procedure than encryption/decryption.
-	 * @param dataLenBits - Data length in bits
+	 * @param dataLen - Data length in bytes
 	 * @param tagLen - Tag length (16 or 32 bytes)
 	 * @returns Authentication tag
 	 */
-	finalizeMac(dataLenBits: bigint, tagLen: 16 | 32 = 16): Uint8Array {
-		let t = new Uint8Array(0);
-		const u = concatBytes(le64(dataLenBits), le64(BigInt(tagLen * 8)));
+	finalizeMac(dataLen: number, tagLen: 16 | 32 = 16): Uint8Array {
+		const u = createAesBlock();
+		const t = this.tmp;
 
+		u[0] = (dataLen * 8) & 0xffffffff;
+		u[1] = Math.floor((dataLen * 8) / 0x100000000);
+		u[2] = tagLen * 8;
+		u[3] = 0;
+
+		const unpacked = createAesBlocks();
 		for (let i = 0; i < this.d; i++) {
-			t = concatBytes(t, xorBlocks(this.v[3]![i]!, u));
-		}
-
-		for (let round = 0; round < 7; round++) {
-			this.update(t);
-		}
-
-		let tags = new Uint8Array(0);
-		if (tagLen === 16) {
-			for (let i = 1; i < this.d; i++) {
-				let ti = xorBlocks(this.v[0]![i]!, this.v[1]![i]!);
-				ti = xorBlocks(ti, this.v[2]![i]!);
-				ti = xorBlocks(ti, this.v[3]![i]!);
-				ti = xorBlocks(ti, this.v[4]![i]!);
-				ti = xorBlocks(ti, this.v[5]![i]!);
-				tags = concatBytes(tags, ti);
-			}
-		} else {
-			for (let i = 1; i < this.d; i++) {
-				let ti0 = xorBlocks(this.v[0]![i]!, this.v[1]![i]!);
-				ti0 = xorBlocks(ti0, this.v[2]![i]!);
-				let ti1 = xorBlocks(this.v[3]![i]!, this.v[4]![i]!);
-				ti1 = xorBlocks(ti1, this.v[5]![i]!);
-				tags = concatBytes(tags, ti0, ti1);
+			const st = this.lanes[i]!;
+			unpacked.set(st);
+			unpack(unpacked);
+			for (let j = 0; j < 4; j++) t[j] = u[j]! ^ unpacked[wordIdx(3, j)]!;
+			packConstantInput256(this.ci, t);
+			for (let round = 0; round < 7; round++) {
+				aegisRound256(st, this.ci);
 			}
 		}
 
 		if (this.d > 1) {
-			for (let i = 0; i + 16 <= tags.length; i += 16) {
-				const v = zeroPad(tags.subarray(i, i + 16), 16 * this.d);
-				this.absorb(v);
+			let tags: Uint8Array;
+			if (tagLen === 16) {
+				tags = new Uint8Array(16 * (this.d - 1));
+				const tb = createAesBlock();
+				for (let i = 1; i < this.d; i++) {
+					unpacked.set(this.lanes[i]!);
+					unpack(unpacked);
+					for (let j = 0; j < 4; j++) {
+						tb[j] =
+							unpacked[wordIdx(0, j)]! ^
+							unpacked[wordIdx(1, j)]! ^
+							unpacked[wordIdx(2, j)]! ^
+							unpacked[wordIdx(3, j)]! ^
+							unpacked[wordIdx(4, j)]! ^
+							unpacked[wordIdx(5, j)]!;
+					}
+					blockToBytes(tags, tb, (i - 1) * 16);
+				}
+			} else {
+				tags = new Uint8Array(32 * (this.d - 1));
+				const tb0 = createAesBlock();
+				const tb1 = createAesBlock();
+				for (let i = 1; i < this.d; i++) {
+					unpacked.set(this.lanes[i]!);
+					unpack(unpacked);
+					for (let j = 0; j < 4; j++) {
+						tb0[j] =
+							unpacked[wordIdx(0, j)]! ^
+							unpacked[wordIdx(1, j)]! ^
+							unpacked[wordIdx(2, j)]!;
+						tb1[j] =
+							unpacked[wordIdx(3, j)]! ^
+							unpacked[wordIdx(4, j)]! ^
+							unpacked[wordIdx(5, j)]!;
+					}
+					blockToBytes(tags, tb0, (i - 1) * 32);
+					blockToBytes(tags, tb1, (i - 1) * 32 + 16);
+				}
 			}
 
-			const u2 = concatBytes(le64(BigInt(this.d)), le64(BigInt(tagLen * 8)));
-			const t2 = zeroPad(xorBlocks(this.v[3]![0]!, u2), this.rate / 8);
+			for (let off = 0; off + 16 <= tags.length; off += 16) {
+				blockFromBytes(this.tmp, tags, off);
+				packConstantInput256(this.ci, this.tmp);
+				aegisRound256(this.lanes[0]!, this.ci);
+				for (let i = 1; i < this.d; i++) {
+					aegisRound256(this.lanes[i]!, this.ciZero);
+				}
+			}
+
+			unpacked.set(this.lanes[0]!);
+			unpack(unpacked);
+			t[0] = this.d ^ unpacked[wordIdx(3, 0)]!;
+			t[1] = unpacked[wordIdx(3, 1)]!;
+			t[2] = (tagLen * 8) ^ unpacked[wordIdx(3, 2)]!;
+			t[3] = unpacked[wordIdx(3, 3)]!;
+			packConstantInput256(this.ci, t);
 			for (let round = 0; round < 7; round++) {
-				this.update(t2);
+				aegisRound256(this.lanes[0]!, this.ci);
+				for (let i = 1; i < this.d; i++) {
+					aegisRound256(this.lanes[i]!, this.ciZero);
+				}
 			}
 		}
 
+		const st = createAesBlocks();
+		st.set(this.lanes[0]!);
+		unpack(st);
+
 		if (tagLen === 16) {
-			let tag = xorBlocks(this.v[0]![0]!, this.v[1]![0]!);
-			tag = xorBlocks(tag, this.v[2]![0]!);
-			tag = xorBlocks(tag, this.v[3]![0]!);
-			tag = xorBlocks(tag, this.v[4]![0]!);
-			tag = xorBlocks(tag, this.v[5]![0]!);
+			const tag = new Uint8Array(16);
+			const tagBlock = createAesBlock();
+			for (let j = 0; j < 4; j++) {
+				tagBlock[j] =
+					st[wordIdx(0, j)]! ^
+					st[wordIdx(1, j)]! ^
+					st[wordIdx(2, j)]! ^
+					st[wordIdx(3, j)]! ^
+					st[wordIdx(4, j)]! ^
+					st[wordIdx(5, j)]!;
+			}
+			blockToBytes(tag, tagBlock);
 			return tag;
 		} else {
-			let t0 = xorBlocks(this.v[0]![0]!, this.v[1]![0]!);
-			t0 = xorBlocks(t0, this.v[2]![0]!);
-			let t1 = xorBlocks(this.v[3]![0]!, this.v[4]![0]!);
-			t1 = xorBlocks(t1, this.v[5]![0]!);
-			return concatBytes(t0, t1);
+			const tag = new Uint8Array(32);
+			const tagBlock0 = createAesBlock();
+			const tagBlock1 = createAesBlock();
+			for (let j = 0; j < 4; j++) {
+				tagBlock0[j] =
+					st[wordIdx(0, j)]! ^ st[wordIdx(1, j)]! ^ st[wordIdx(2, j)]!;
+				tagBlock1[j] =
+					st[wordIdx(3, j)]! ^ st[wordIdx(4, j)]! ^ st[wordIdx(5, j)]!;
+			}
+			blockToBytes(tag, tagBlock0);
+			blockToBytes(tag, tagBlock1, 16);
+			return tag;
 		}
 	}
 }
@@ -394,30 +482,29 @@ export function aegis256XEncryptDetached(
 	degree: number = 2,
 ): { ciphertext: Uint8Array; tag: Uint8Array } {
 	const state = new Aegis256XState(degree);
-	const rateBytes = (128 * degree) / 8;
+	const rateBytes = 16 * degree;
 
 	state.init(key, nonce);
 
 	const adPadded = zeroPad(ad, rateBytes);
 	for (let i = 0; i + rateBytes <= adPadded.length; i += rateBytes) {
-		state.absorb(adPadded.subarray(i, i + rateBytes));
+		state.absorb(adPadded, i);
 	}
 
-	const msgPadded = zeroPad(msg, rateBytes);
-	const ct = new Uint8Array(msgPadded.length);
-	for (let i = 0; i + rateBytes <= msgPadded.length; i += rateBytes) {
-		state.encTo(
-			msgPadded.subarray(i, i + rateBytes),
-			ct.subarray(i, i + rateBytes),
-		);
+	const ciphertext = new Uint8Array(msg.length);
+	const fullBlocks = Math.floor(msg.length / rateBytes) * rateBytes;
+
+	for (let i = 0; i < fullBlocks; i += rateBytes) {
+		state.encTo(msg, ciphertext, i, i);
 	}
 
-	const tag = state.finalize(
-		BigInt(ad.length * 8),
-		BigInt(msg.length * 8),
-		tagLen,
-	);
-	const ciphertext = new Uint8Array(ct.subarray(0, msg.length));
+	if (msg.length > fullBlocks) {
+		const lastBlock = zeroPad(msg.subarray(fullBlocks), rateBytes);
+		const encBlock = state.enc(lastBlock);
+		ciphertext.set(encBlock.subarray(0, msg.length - fullBlocks), fullBlocks);
+	}
+
+	const tag = state.finalize(ad.length, msg.length, tagLen);
 
 	return { ciphertext, tag };
 }
@@ -442,32 +529,27 @@ export function aegis256XDecryptDetached(
 ): Uint8Array | null {
 	const tagLen = tag.length as 16 | 32;
 	const state = new Aegis256XState(degree);
-	const rateBytes = (128 * degree) / 8;
+	const rateBytes = 16 * degree;
 
 	state.init(key, nonce);
 
 	const adPadded = zeroPad(ad, rateBytes);
 	for (let i = 0; i + rateBytes <= adPadded.length; i += rateBytes) {
-		state.absorb(adPadded.subarray(i, i + rateBytes));
+		state.absorb(adPadded, i);
 	}
 
-	const fullBlocksLen = Math.floor(ct.length / rateBytes) * rateBytes;
-	const cn = ct.subarray(fullBlocksLen);
+	const msg = new Uint8Array(ct.length);
+	const fullBlocks = Math.floor(ct.length / rateBytes) * rateBytes;
 
-	const msg = new Uint8Array(fullBlocksLen + (cn.length > 0 ? cn.length : 0));
-	for (let i = 0; i + rateBytes <= ct.length; i += rateBytes) {
-		state.decTo(ct.subarray(i, i + rateBytes), msg.subarray(i, i + rateBytes));
+	for (let i = 0; i < fullBlocks; i += rateBytes) {
+		state.decTo(ct, msg, i, i);
 	}
 
-	if (cn.length > 0) {
-		msg.set(state.decPartial(cn), fullBlocksLen);
+	if (ct.length > fullBlocks) {
+		msg.set(state.decPartial(ct.subarray(fullBlocks)), fullBlocks);
 	}
 
-	const expectedTag = state.finalize(
-		BigInt(ad.length * 8),
-		BigInt(msg.length * 8),
-		tagLen,
-	);
+	const expectedTag = state.finalize(ad.length, msg.length, tagLen);
 
 	if (!constantTimeEqual(tag, expectedTag)) {
 		msg.fill(0);
@@ -497,20 +579,20 @@ export function aegis256XEncryptDetachedInPlace(
 	degree: number = 2,
 ): Uint8Array {
 	const state = new Aegis256XState(degree);
-	const rateBytes = (128 * degree) / 8;
+	const rateBytes = 16 * degree;
 
 	state.init(key, nonce);
 
 	const adPadded = zeroPad(ad, rateBytes);
 	for (let i = 0; i + rateBytes <= adPadded.length; i += rateBytes) {
-		state.absorb(adPadded.subarray(i, i + rateBytes));
+		state.absorb(adPadded, i);
 	}
 
 	const msgLen = data.length;
 	const fullBlocksLen = Math.floor(msgLen / rateBytes) * rateBytes;
 
 	for (let i = 0; i < fullBlocksLen; i += rateBytes) {
-		state.encInPlace(data.subarray(i, i + rateBytes));
+		state.encTo(data, data, i, i);
 	}
 
 	if (msgLen > fullBlocksLen) {
@@ -520,7 +602,7 @@ export function aegis256XEncryptDetachedInPlace(
 		lastPartial.set(encBlock.subarray(0, lastPartial.length));
 	}
 
-	return state.finalize(BigInt(ad.length * 8), BigInt(msgLen * 8), tagLen);
+	return state.finalize(ad.length, msgLen, tagLen);
 }
 
 /**
@@ -544,20 +626,20 @@ export function aegis256XDecryptDetachedInPlace(
 ): boolean {
 	const tagLen = tag.length as 16 | 32;
 	const state = new Aegis256XState(degree);
-	const rateBytes = (128 * degree) / 8;
+	const rateBytes = 16 * degree;
 
 	state.init(key, nonce);
 
 	const adPadded = zeroPad(ad, rateBytes);
 	for (let i = 0; i + rateBytes <= adPadded.length; i += rateBytes) {
-		state.absorb(adPadded.subarray(i, i + rateBytes));
+		state.absorb(adPadded, i);
 	}
 
 	const msgLen = data.length;
 	const fullBlocksLen = Math.floor(msgLen / rateBytes) * rateBytes;
 
 	for (let i = 0; i < fullBlocksLen; i += rateBytes) {
-		state.decInPlace(data.subarray(i, i + rateBytes));
+		state.decTo(data, data, i, i);
 	}
 
 	if (msgLen > fullBlocksLen) {
@@ -566,11 +648,7 @@ export function aegis256XDecryptDetachedInPlace(
 		lastPartial.set(decrypted);
 	}
 
-	const expectedTag = state.finalize(
-		BigInt(ad.length * 8),
-		BigInt(msgLen * 8),
-		tagLen,
-	);
+	const expectedTag = state.finalize(ad.length, msgLen, tagLen);
 
 	if (!constantTimeEqual(tag, expectedTag)) {
 		data.fill(0);
@@ -642,43 +720,21 @@ export function aegis256XEncrypt(
 	degree: number = 2,
 ): Uint8Array {
 	const actualNonce = nonce ?? randomBytes(AEGIS_256X_NONCE_SIZE);
-	const state = new Aegis256XState(degree);
-	const rateBytes = (128 * degree) / 8;
-
-	state.init(key, actualNonce);
-
-	const adPadded = zeroPad(ad, rateBytes);
-	for (let i = 0; i + rateBytes <= adPadded.length; i += rateBytes) {
-		state.absorb(adPadded.subarray(i, i + rateBytes));
-	}
-
-	const nonceSize = AEGIS_256X_NONCE_SIZE;
-	const result = new Uint8Array(nonceSize + msg.length + tagLen);
-	result.set(actualNonce, 0);
-
-	const fullBlocks = Math.floor(msg.length / rateBytes) * rateBytes;
-	for (let i = 0; i < fullBlocks; i += rateBytes) {
-		state.encTo(
-			msg.subarray(i, i + rateBytes),
-			result.subarray(nonceSize + i, nonceSize + i + rateBytes),
-		);
-	}
-
-	if (msg.length > fullBlocks) {
-		const lastBlock = zeroPad(msg.subarray(fullBlocks), rateBytes);
-		const encBlock = state.enc(lastBlock);
-		result.set(
-			encBlock.subarray(0, msg.length - fullBlocks),
-			nonceSize + fullBlocks,
-		);
-	}
-
-	const tag = state.finalize(
-		BigInt(ad.length * 8),
-		BigInt(msg.length * 8),
+	const { ciphertext, tag } = aegis256XEncryptDetached(
+		msg,
+		ad,
+		key,
+		actualNonce,
 		tagLen,
+		degree,
 	);
-	result.set(tag, nonceSize + msg.length);
+
+	const result = new Uint8Array(
+		AEGIS_256X_NONCE_SIZE + ciphertext.length + tagLen,
+	);
+	result.set(actualNonce, 0);
+	result.set(ciphertext, AEGIS_256X_NONCE_SIZE);
+	result.set(tag, AEGIS_256X_NONCE_SIZE + ciphertext.length);
 
 	return result;
 }
@@ -797,16 +853,16 @@ export function aegis256XMac(
 	degree: number = 2,
 ): Uint8Array {
 	const state = new Aegis256XState(degree);
-	const rateBytes = (128 * degree) / 8;
+	const rateBytes = 16 * degree;
 
 	state.init(key, nonce ?? new Uint8Array(32));
 
 	const dataPadded = zeroPad(data, rateBytes);
 	for (let i = 0; i + rateBytes <= dataPadded.length; i += rateBytes) {
-		state.absorb(dataPadded.subarray(i, i + rateBytes));
+		state.absorb(dataPadded, i);
 	}
 
-	return state.finalizeMac(BigInt(data.length * 8), tagLen);
+	return state.finalizeMac(data.length, tagLen);
 }
 
 /**

@@ -29,7 +29,7 @@ AEGIS provides both encryption with authentication and standalone MAC functional
   - [Security Considerations](#security-considerations)
     - [Nonce Safety](#nonce-safety)
     - [Tag Lengths](#tag-lengths)
-    - [Bitsliced Variants](#bitsliced-variants)
+    - [Constant-Time Implementation](#constant-time-implementation)
   - [Compatibility](#compatibility)
   - [Browser Example](#browser-example)
 
@@ -59,21 +59,18 @@ const decrypted = aegis128LDecrypt(sealed, associatedData, key);
 
 ## Choosing an Algorithm
 
-| Algorithm     | Key      | Nonce    | Best For                                 |
-| ------------- | -------- | -------- | ---------------------------------------- |
-| AEGIS-128L    | 16 bytes | 16 bytes | General use, high throughput             |
-| AEGIS-256     | 32 bytes | 32 bytes | Large nonce, unlimited messages          |
-| AEGIS-128X    | 16 bytes | 16 bytes | Interop with native SIMD implementations |
-| AEGIS-256X    | 32 bytes | 32 bytes | Interop + large nonce                    |
-| AEGIS-128L-BS | 16 bytes | 16 bytes | Side-channel protection                  |
-| AEGIS-256-BS  | 32 bytes | 32 bytes | Side-channel + large nonce               |
+| Algorithm  | Key      | Nonce    | Best For                                 |
+| ---------- | -------- | -------- | ---------------------------------------- |
+| AEGIS-128L | 16 bytes | 16 bytes | General use, high throughput             |
+| AEGIS-256  | 32 bytes | 32 bytes | Large nonce, unlimited messages          |
+| AEGIS-128X | 16 bytes | 16 bytes | Interop with native SIMD implementations |
+| AEGIS-256X | 32 bytes | 32 bytes | Interop + large nonce                    |
 
 Recommendations:
 
 - Default choice: AEGIS-128L offers excellent performance with safe random nonces up to 2^48 messages
 - Unlimited messages: AEGIS-256 when you need unlimited random nonces (32-byte nonce eliminates collision risk)
 - Interoperability: AEGIS-128X/256X when exchanging data with native implementations using these variants
-- Hostile environments: Bitsliced variants (-BS) when attackers may observe timing
 
 Note: The X variants are designed for SIMD parallelism in native code. In JavaScript they offer no speed benefit but are provided for interoperability.
 
@@ -155,7 +152,7 @@ const valid = aegis128LMacVerify(data, tag, key);
 
 ## API Overview
 
-All AEGIS variants follow the same API pattern. Replace `aegis128L` with your chosen algorithm (`aegis256`, `aegis128X2`, `aegis128X4`, `aegis256X2`, `aegis256X4`, `aegis128LBs`, `aegis256Bs`).
+All AEGIS variants follow the same API pattern. Replace `aegis128L` with your chosen algorithm (`aegis256`, `aegis128X2`, `aegis128X4`, `aegis256X2`, `aegis256X4`).
 
 ### Functions
 
@@ -221,16 +218,9 @@ All algorithms support 16-byte (128-bit) and 32-byte (256-bit) tags:
 const sealed = aegis128LEncrypt(msg, ad, key, undefined, 32);
 ```
 
-### Bitsliced Variants
+### Constant-Time Implementation
 
-The `-BS` variants use a constant-time bitsliced AES implementation that doesn't use lookup tables, which prevents cache-timing attacks. The bitsliced code processes all state blocks in a single fused round and is currently the fastest scalar implementation in this library, so the protection comes at no cost.
-
-Use bitsliced variants when:
-- Running on shared infrastructure (cloud VMs, containers)
-- Attackers may observe timing information
-- Processing attacker-controlled data with secret keys
-
-For most applications, standard variants are safe since AEGIS's continuous state mixing makes timing attacks impractical.
+All variants are built on a constant-time bitsliced AES implementation that doesn't use lookup tables, which prevents cache-timing attacks. The bitsliced code processes all state blocks in a single fused round, and it is also the fastest scalar implementation we know of, so the protection comes at no cost. There is no faster table-based fallback to choose, and no reason to want one.
 
 ## Compatibility
 
